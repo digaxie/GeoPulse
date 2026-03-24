@@ -76,7 +76,7 @@ npm run verify:generated
 
 This repository is source-available and licensed under BUSL-1.1. See `LICENSE` for full terms.
 
-Copyright (c) 2024-2026 digaxie. Licensed under BUSL-1.1.
+Copyright (c) 2026 digaxie. Licensed under BUSL-1.1.
 
 ## Türkçe
 
@@ -152,4 +152,4 @@ npm run verify:generated
 
 Bu repo source-available olarak BUSL-1.1 ile lisanslanmıştır. Tüm şartlar için `LICENSE` dosyasına bakın.
 
-Copyright (c) 2024-2026 digaxie. Licensed under BUSL-1.1.
+Copyright (c) 2026 digaxie. Licensed under BUSL-1.1.
