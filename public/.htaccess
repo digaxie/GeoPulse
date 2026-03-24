@@ -1,0 +1,6 @@
+RewriteEngine On
+RewriteBase /map/
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /map/index.html [L]

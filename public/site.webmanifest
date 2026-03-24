@@ -1,0 +1,15 @@
+{
+  "name": "GeoPulse",
+  "short_name": "GeoPulse",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#dce8fb",
+  "theme_color": "#10203b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

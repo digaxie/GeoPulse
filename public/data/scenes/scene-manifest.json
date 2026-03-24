@@ -1,0 +1,126 @@
+{
+  "provider": "vercel_blob_placeholder",
+  "notes": "Regional Liberty scene packs can be uploaded to Vercel Blob later using these stable blob keys.",
+  "presets": [
+    {
+      "id": "europe",
+      "label": "Avrupa",
+      "type": "continent",
+      "extent": [
+        -26,
+        33,
+        46,
+        72
+      ],
+      "blobKey": "continents/europe.pmtiles"
+    },
+    {
+      "id": "africa",
+      "label": "Afrika",
+      "type": "continent",
+      "extent": [
+        -20,
+        -36,
+        55,
+        38
+      ],
+      "blobKey": "continents/africa.pmtiles"
+    },
+    {
+      "id": "asia",
+      "label": "Asya",
+      "type": "continent",
+      "extent": [
+        25,
+        -11,
+        180,
+        82
+      ],
+      "blobKey": "continents/asia.pmtiles"
+    },
+    {
+      "id": "north_america",
+      "label": "K. Amerika",
+      "type": "continent",
+      "extent": [
+        -172,
+        4,
+        -12,
+        86
+      ],
+      "blobKey": "continents/north-america.pmtiles"
+    },
+    {
+      "id": "south_america",
+      "label": "G. Amerika",
+      "type": "continent",
+      "extent": [
+        -93,
+        -57,
+        -25,
+        18
+      ],
+      "blobKey": "continents/south-america.pmtiles"
+    },
+    {
+      "id": "oceania",
+      "label": "Okyanusya",
+      "type": "continent",
+      "extent": [
+        95,
+        -55,
+        180,
+        21
+      ],
+      "blobKey": "continents/oceania.pmtiles"
+    },
+    {
+      "id": "middle_east",
+      "label": "Orta Doğu",
+      "type": "focus",
+      "extent": [
+        24,
+        10,
+        66,
+        43
+      ],
+      "blobKey": "focus/middle-east.pmtiles"
+    },
+    {
+      "id": "turkiye",
+      "label": "Türkiye",
+      "type": "focus",
+      "extent": [
+        25,
+        35,
+        45.5,
+        43
+      ],
+      "blobKey": "focus/turkiye.pmtiles"
+    },
+    {
+      "id": "caucasus",
+      "label": "Kafkasya",
+      "type": "focus",
+      "extent": [
+        29.5,
+        38,
+        52.5,
+        49.5
+      ],
+      "blobKey": "focus/caucasus.pmtiles"
+    },
+    {
+      "id": "balkans",
+      "label": "Balkanlar",
+      "type": "focus",
+      "extent": [
+        12,
+        36,
+        31,
+        49
+      ],
+      "blobKey": "focus/balkans.pmtiles"
+    }
+  ]
+}

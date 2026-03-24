@@ -1,0 +1,26 @@
+{
+  "preset": "de_facto_world",
+  "generatedAt": "2026-03-16T10:18:51.898Z",
+  "sources": [
+    {
+      "id": "admin0-countries",
+      "version": "5.1.1",
+      "url": "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_countries.zip"
+    },
+    {
+      "id": "admin1-regions",
+      "version": "5.1.1",
+      "url": "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces.zip"
+    },
+    {
+      "id": "populated-places",
+      "version": "5.1.2",
+      "url": "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_populated_places.zip"
+    },
+    {
+      "id": "disputed-areas",
+      "version": "5.1.1",
+      "url": "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_0_disputed_areas.zip"
+    }
+  ]
+}
