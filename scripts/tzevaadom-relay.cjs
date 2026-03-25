@@ -180,11 +180,10 @@ function scheduleReconnect() {
 
 // ---------- Local WebSocket Server ----------
 
-const wss = new WebSocketServer({ port: LOCAL_PORT })
+const wss = new WebSocketServer({ port: LOCAL_PORT, host: '0.0.0.0' })
 
 wss.on('listening', () => {
-  log('INFO', `Relay server calisiyor: ws://localhost:${LOCAL_PORT}`)
-  log('INFO', 'Tarayicidan ws://localhost:3001 ile baglanabilirsiniz')
+  log('INFO', `Relay server calisiyor: 0.0.0.0:${LOCAL_PORT}`)
   connectUpstream()
 })
 
