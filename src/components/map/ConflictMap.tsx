@@ -1463,12 +1463,10 @@ export function ConflictMap({
 
   // ── Tzeva Adom WebSocket Feed ──
   useEffect(() => {
-    if (!alertsEnabled) return
-
-    const TZEVAADOM_RELAY_URL = 'ws://localhost:3001'
+    if (!alertsEnabled || !appEnv.tzevaadomRelayUrl) return
 
     const tzevaadomFeed = createTzevaadomFeed({
-      url: TZEVAADOM_RELAY_URL,
+      url: appEnv.tzevaadomRelayUrl,
       onAlert: (tzAlert) => {
         log.debug('Tzeva Adom alert', { cities: tzAlert.cities, threat: tzAlert.threat })
         const threatLabel = getThreatLabel(tzAlert.threat)

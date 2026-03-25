@@ -15,6 +15,7 @@ export const appEnv = {
     Boolean(env.VITE_SUPABASE_URL?.trim()) &&
     Boolean(env.VITE_SUPABASE_ANON_KEY?.trim()),
   useHgmAtlas: Boolean(env.VITE_HGM_ATLAS_API_KEY?.trim()),
+  tzevaadomRelayUrl: env.VITE_TZEVAADOM_RELAY_URL?.trim(),
 } as const
 
 export type AppEnv = typeof appEnv
