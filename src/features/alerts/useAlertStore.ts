@@ -10,6 +10,10 @@ import {
   type AlertFeedTransport,
   type RocketAlert,
 } from '@/features/alerts/types'
+import type { TzevaadomConnectionStatus, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
+
+const MAX_SYSTEM_MESSAGES = 20
+const SYSTEM_MESSAGE_RETENTION_MS = 30 * 60 * 1000 // 30 min
 
 type AlertStore = {
   alerts: RocketAlert[]
@@ -20,6 +24,8 @@ type AlertStore = {
   selectedAlertId: string | null
   dismissedBeforeMs: number | null
   retentionMs: number
+  tzevaadomStatus: TzevaadomConnectionStatus
+  systemMessages: TzevaadomSystemMessage[]
   setAlerts: (alerts: RocketAlert[], fetchedAt?: number | null) => void
   setHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
   mergeHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
@@ -30,6 +36,10 @@ type AlertStore = {
   setRetentionMs: (retentionMs: number) => void
   dismissCurrentAlerts: (cutoffMs?: number) => void
   clearAlerts: () => void
+  setTzevaadomStatus: (status: TzevaadomConnectionStatus) => void
+  addSystemMessage: (message: TzevaadomSystemMessage) => void
+  dismissSystemMessage: (id: number) => void
+  clearSystemMessages: () => void
 }
 
 function sortAlertsByNewest(alerts: RocketAlert[]) {
@@ -108,6 +118,8 @@ export const useAlertStore = create<AlertStore>((set) => ({
   selectedAlertId: null,
   dismissedBeforeMs: null,
   retentionMs: DEFAULT_ALERT_RETENTION_MS,
+  tzevaadomStatus: 'disconnected',
+  systemMessages: [],
 
   setAlerts(alerts, fetchedAt = null) {
     set((current) => {
@@ -235,5 +247,38 @@ export const useAlertStore = create<AlertStore>((set) => ({
       selectedAlertId: null,
       dismissedBeforeMs: null,
     })
+  },
+
+  setTzevaadomStatus(tzevaadomStatus) {
+    set((current) => (current.tzevaadomStatus === tzevaadomStatus ? current : { tzevaadomStatus }))
+  },
+
+  addSystemMessage(message) {
+    set((current) => {
+      const now = Date.now()
+      // Deduplicate by id+type
+      const isDuplicate = current.systemMessages.some(
+        (m) => m.id === message.id && m.type === message.type,
+      )
+      if (isDuplicate) return current
+
+      // Prune old messages
+      const fresh = current.systemMessages.filter(
+        (m) => now - m.receivedAtMs < SYSTEM_MESSAGE_RETENTION_MS,
+      )
+      fresh.unshift(message)
+
+      return { systemMessages: fresh.slice(0, MAX_SYSTEM_MESSAGES) }
+    })
+  },
+
+  dismissSystemMessage(id) {
+    set((current) => ({
+      systemMessages: current.systemMessages.filter((m) => m.id !== id),
+    }))
+  },
+
+  clearSystemMessages() {
+    set({ systemMessages: [] })
   },
 }))

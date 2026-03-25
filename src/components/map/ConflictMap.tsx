@@ -57,6 +57,7 @@ import {
   type RocketAlert,
 } from '@/features/alerts/types'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
+import { createTzevaadomFeed, getThreatLabel } from '@/features/alerts/tzevaadomService'
 import { toUploadedAssetSnapshot } from '@/features/assets/assetSnapshots'
 import { findSeedAssetById } from '@/features/assets/seedAssets'
 import { createMissileLayer, type MissileBindings } from '@/features/missiles/MissileMapLayer'
@@ -898,6 +899,8 @@ export function ConflictMap({
   const alertRetentionMs = useAlertStore((state) => state.retentionMs)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
+  const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
+  const addSystemMessage = useAlertStore((state) => state.addSystemMessage)
   const alertSettings = useScenarioStore((state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS)
   const alertsEnabled = alertSettings.enabled
   const alertAutoZoomEnabled = alertSettings.autoZoomEnabled
@@ -1457,6 +1460,49 @@ export function ConflictMap({
       window.clearInterval(timerId)
     }
   }, [alertsEnabled, pruneAlertHistory])
+
+  // ── Tzeva Adom WebSocket Feed ──
+  useEffect(() => {
+    if (!alertsEnabled) return
+
+    const TZEVAADOM_RELAY_URL = 'ws://localhost:3001'
+
+    const tzevaadomFeed = createTzevaadomFeed({
+      url: TZEVAADOM_RELAY_URL,
+      onAlert: (tzAlert) => {
+        log.debug('Tzeva Adom alert', { cities: tzAlert.cities, threat: tzAlert.threat })
+        const threatLabel = getThreatLabel(tzAlert.threat)
+        const citiesList = tzAlert.cities.length > 0 ? tzAlert.cities.join(', ') : 'Bilinmeyen bölge'
+        addSystemMessage({
+          id: Date.now(),
+          time: new Date(tzAlert.time * 1000).toISOString(),
+          type: 'alert',
+          titleEn: `${tzAlert.isDrill ? '[TATBIKAT] ' : ''}${threatLabel}`,
+          titleHe: '',
+          bodyEn: '',
+          bodyHe: `Hedef bölge: ${citiesList}`,
+          bodyAr: '',
+          receivedAtMs: Date.now(),
+        })
+      },
+      onSystemMessage: (message) => {
+        log.info('Tzeva Adom system message', {
+          type: message.type,
+          titleEn: message.titleEn,
+          bodyEn: message.bodyEn,
+        })
+        addSystemMessage(message)
+      },
+      onStatusChange: (status) => {
+        setTzevaadomStatus(status)
+      },
+    })
+
+    tzevaadomFeed.start()
+    return () => {
+      tzevaadomFeed.stop()
+    }
+  }, [alertsEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hideEraserCursor = useEffectEvent(() => {
     setEraserCursor(null)

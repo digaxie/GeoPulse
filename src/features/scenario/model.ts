@@ -187,6 +187,7 @@ export const scenarioAlertSettingsSchema = z
     editorVolume: z.number().min(0).max(1).optional(),
     presentationSoundEnabled: z.boolean().optional(),
     presentationVolume: z.number().min(0).max(1).optional(),
+    bannerAutoDismissSec: z.number().min(5).max(120).optional(),
     soundEnabled: z.boolean().optional(),
     volume: z.number().min(0).max(1).optional(),
   })
@@ -203,6 +204,8 @@ export const scenarioAlertSettingsSchema = z
       presentationSoundEnabled:
         input.presentationSoundEnabled ?? legacySoundEnabled,
       presentationVolume: input.presentationVolume ?? legacyVolume,
+      bannerAutoDismissSec:
+        input.bannerAutoDismissSec ?? DEFAULT_SCENARIO_ALERT_SETTINGS.bannerAutoDismissSec,
     }
   })
 export const briefingSlideSchema = z.object({

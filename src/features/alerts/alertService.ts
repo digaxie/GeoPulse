@@ -393,32 +393,42 @@ export async function fetchRocketAlertHistory(
   fetchImpl: typeof fetch = fetch,
   nowMs = Date.now(),
 ) {
-  const query = new URLSearchParams(buildAlertHistoryQueryWindow(nowMs))
-  const response = await fetchImpl(`${ALERTS_HISTORY_URL}?${query.toString()}`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-    },
-    signal,
-  })
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), 8_000)
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
 
-  if (!response.ok) {
-    throw new Error(`Alert history ${response.status} ile dondu.`)
-  }
+  try {
+    const query = new URLSearchParams(buildAlertHistoryQueryWindow(nowMs))
+    const response = await fetchImpl(`${ALERTS_HISTORY_URL}?${query.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal: combinedSignal,
+    })
 
-  const body = (await response.json()) as RawAlertsResponse
-  if (body.success !== true) {
-    throw new Error(typeof body.error === 'string' ? body.error : 'Alert history hatasi.')
-  }
+    if (!response.ok) {
+      throw new Error(`Alert history ${response.status} ile dondu.`)
+    }
 
-  const fetchedAtMs = Date.now()
-  return {
-    fetchedAtMs,
-    alerts: mergeAlertHistory(
-      [],
-      flattenAlertPayload(body.payload, fetchedAtMs, fetchedAtMs, ALERT_HISTORY_WINDOW_MS),
+    const body = (await response.json()) as RawAlertsResponse
+    if (body.success !== true) {
+      throw new Error(typeof body.error === 'string' ? body.error : 'Alert history hatasi.')
+    }
+
+    const fetchedAtMs = Date.now()
+    return {
       fetchedAtMs,
-    ),
+      alerts: mergeAlertHistory(
+        [],
+        flattenAlertPayload(body.payload, fetchedAtMs, fetchedAtMs, ALERT_HISTORY_WINDOW_MS),
+        fetchedAtMs,
+      ),
+    }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -446,6 +456,7 @@ export function createAlertFeed(options: {
   let fallbackUpgradeTimerId: number | null = null
   let streamOpenTimeoutId: number | null = null
   let expiryTimerId: number | null = null
+  let visibilityResyncTimerId: number | null = null
   let visibleStreamFailures = 0
   let fallbackActive = false
 
@@ -722,27 +733,32 @@ export function createAlertFeed(options: {
       return
     }
 
-    void executeSnapshotFetch('resync')
-      .then(() => {
-        if (currentTransport === 'stream' || currentTransport === 'polling') {
-          options.onStatusChange('live')
-        }
-      })
-      .catch((error) => {
-        if ((error as Error).name !== 'AbortError') {
-          options.onStatusChange('error')
-        }
-      })
+    clearTimer(visibilityResyncTimerId)
+    visibilityResyncTimerId = window.setTimeout(() => {
+      visibilityResyncTimerId = null
 
-    if (fallbackActive) {
-      openStream(false, true)
-      return
-    }
+      void executeSnapshotFetch('resync')
+        .then(() => {
+          if (currentTransport === 'stream' || currentTransport === 'polling') {
+            options.onStatusChange('live')
+          }
+        })
+        .catch((error) => {
+          if ((error as Error).name !== 'AbortError') {
+            options.onStatusChange('error')
+          }
+        })
 
-    if (!stream) {
-      visibleStreamFailures = 0
-      openStream(true, false)
-    }
+      if (fallbackActive) {
+        openStream(false, true)
+        return
+      }
+
+      if (!stream) {
+        visibleStreamFailures = 0
+        openStream(true, false)
+      }
+    }, 300)
   }
 
   return {
@@ -774,6 +790,8 @@ export function createAlertFeed(options: {
       clearStreamOpenTimeout()
       clearTimer(expiryTimerId)
       expiryTimerId = null
+      clearTimer(visibilityResyncTimerId)
+      visibilityResyncTimerId = null
       closeStream()
       stopFallbackPolling()
       visibilityDocument.removeEventListener('visibilitychange', handleVisibilityChange)

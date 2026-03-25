@@ -11,6 +11,7 @@ export type ScenarioAlertSettings = {
   editorVolume: number
   presentationSoundEnabled: boolean
   presentationVolume: number
+  bannerAutoDismissSec: number
 }
 
 export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
@@ -20,6 +21,7 @@ export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
   editorVolume: 0.55,
   presentationSoundEnabled: false,
   presentationVolume: 0.55,
+  bannerAutoDismissSec: 15,
 }
 
 export const MIN_ALERT_RETENTION_MS = 30_000

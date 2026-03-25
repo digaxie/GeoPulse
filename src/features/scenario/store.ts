@@ -113,6 +113,7 @@ type ScenarioStore = {
   setEditorAlertVolume: (volume: number) => void
   setPresentationAlertSoundEnabled: (enabled: boolean) => void
   setPresentationAlertVolume: (volume: number) => void
+  setBannerAutoDismissSec: (seconds: number) => void
   toggleMissileSelection: (missileId: string) => void
   setActiveMissile: (missileId: string | null) => void
   setMissileTarget: (coord: Coordinate | null) => void
@@ -773,6 +774,30 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
             alerts: {
               ...alertsState,
               presentationVolume: nextVolume,
+            },
+          },
+          { trackHistory: false },
+        ),
+      }
+    })
+  },
+
+  setBannerAutoDismissSec(seconds) {
+    set((current) => {
+      const alertsState = getAlertSettings(current.document)
+      const nextSeconds = Math.round(Math.min(120, Math.max(5, seconds)))
+      if (alertsState.bannerAutoDismissSec === nextSeconds) {
+        return current
+      }
+
+      return {
+        ...applyMutation(
+          current,
+          {
+            ...current.document,
+            alerts: {
+              ...alertsState,
+              bannerAutoDismissSec: nextSeconds,
             },
           },
           { trackHistory: false },

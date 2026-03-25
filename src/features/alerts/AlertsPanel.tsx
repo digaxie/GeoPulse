@@ -33,6 +33,15 @@ const ALERT_RETENTION_OPTIONS = [
   { value: 300_000, label: '5 dk' },
 ] as const
 
+const BANNER_DISMISS_OPTIONS = [
+  { value: 5, label: '5 sn' },
+  { value: 10, label: '10 sn' },
+  { value: 15, label: '15 sn' },
+  { value: 30, label: '30 sn' },
+  { value: 60, label: '1 dk' },
+  { value: 120, label: '2 dk' },
+] as const
+
 function getFeedTransportLabel(transport: AlertFeedTransport) {
   switch (transport) {
     case 'stream':
@@ -99,6 +108,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const setEditorAlertVolume = useScenarioStore((state) => state.setEditorAlertVolume)
   const setPresentationAlertSoundEnabled = useScenarioStore((state) => state.setPresentationAlertSoundEnabled)
   const setPresentationAlertVolume = useScenarioStore((state) => state.setPresentationAlertVolume)
+  const setBannerAutoDismissSec = useScenarioStore((state) => state.setBannerAutoDismissSec)
   const [now, setNow] = useState(() => Date.now())
   const enabled = alertSettings.enabled
 
@@ -230,6 +240,27 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
             value={retentionMs}
           >
             {ALERT_RETENTION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="alerts-volume-control">
+          <span>
+            Bildirimler{' '}
+            {BANNER_DISMISS_OPTIONS.find((o) => o.value === alertSettings.bannerAutoDismissSec)?.label ??
+              `${alertSettings.bannerAutoDismissSec} sn`}{' '}
+            sonra kapanır
+          </span>
+          <select
+            className="panel-input panel-select"
+            disabled={!canToggle || !enabled}
+            onChange={(event) => setBannerAutoDismissSec(Number(event.target.value))}
+            value={alertSettings.bannerAutoDismissSec}
+          >
+            {BANNER_DISMISS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

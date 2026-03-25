@@ -35,12 +35,13 @@ const supabase = appEnv.useSupabase
   ? createClient(appEnv.supabaseUrl!, appEnv.supabaseAnonKey!)
   : null
 
-const publicViewerSupabase = appEnv.useSupabase
+export const publicViewerSupabase = appEnv.useSupabase
   ? createClient(appEnv.supabaseUrl!, appEnv.supabaseAnonKey!, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
+        storageKey: 'sb-viewer-auth-token',
       },
     })
   : null

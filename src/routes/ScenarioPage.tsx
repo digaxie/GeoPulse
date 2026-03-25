@@ -11,6 +11,7 @@ import { TextControls } from '@/components/panels/TextControls'
 import { ToolDock } from '@/components/panels/ToolDock'
 import { VersionHistoryPanel } from '@/components/panels/VersionHistoryPanel'
 import { AlertsPanel } from '@/features/alerts/AlertsPanel'
+import { SystemMessageBanner } from '@/features/alerts/SystemMessageBanner'
 import { useAssets } from '@/features/assets/useAssets'
 import { useAuth } from '@/features/auth/useAuth'
 import { MissilePanel } from '@/features/missiles/MissilePanel'
@@ -480,6 +481,7 @@ export function ScenarioPage() {
               visibleElementIds={activeVisibleElementIds}
             />
           </MapErrorBoundary>
+          <SystemMessageBanner />
         </section>
 
         <div className="workspace-sidebar-container">
