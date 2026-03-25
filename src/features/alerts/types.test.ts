@@ -44,6 +44,7 @@ describe('alert presentation helpers', () => {
           editorVolume: 0.8,
           presentationSoundEnabled: false,
           presentationVolume: 0.3,
+          bannerAutoDismissSec: 15,
         },
         'presentation',
       ),
