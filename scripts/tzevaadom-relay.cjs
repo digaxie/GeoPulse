@@ -19,7 +19,7 @@ const { WebSocketServer, WebSocket } = require('ws')
 const crypto = require('crypto')
 
 const UPSTREAM_URL = 'wss://ws.tzevaadom.co.il/socket?platform=ANDROID'
-const LOCAL_PORT = 3001
+const LOCAL_PORT = Number(process.env.PORT) || 3001
 const PING_INTERVAL_MS = 55_000
 const RECONNECT_BASE_MS = 2_000
 const RECONNECT_MAX_MS = 30_000
