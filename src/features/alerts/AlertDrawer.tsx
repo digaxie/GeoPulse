@@ -1,126 +1,26 @@
-import { useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
-import {
-  formatAlertShelterInstruction,
-  formatTimelineDualTime,
-  getAlertTypeLabel,
-  getTimelineItemColor,
-  getTimelineItemIcon,
-  groupAlertCitiesByZone,
-  type RocketAlert,
-} from '@/features/alerts/types'
-import type { EnrichedCity, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
-
-export type DrawerCardItem =
-  | {
-      key: string
-      kind: 'alert'
-      timestampMs: number
-      isLive: boolean
-      alert: RocketAlert
-    }
-  | {
-      key: string
-      kind: 'system'
-      timestampMs: number
-      isLive: boolean
-      message: TzevaadomSystemMessage
-    }
+import { formatTimelineDualTime } from '@/features/alerts/types'
+import type {
+  DrawerCardViewModel,
+  DrawerCity,
+  DrawerCityGroup,
+} from '@/features/alerts/alertDrawerModel'
 
 type AlertDrawerProps = {
   collapsed: boolean
   enabled: boolean
   historyTruncated: boolean
-  items: DrawerCardItem[]
+  items: DrawerCardViewModel[]
   selectedKey: string | null
   onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
   onSelectItem: (key: string) => void
   onToggleCollapsed: () => void
 }
 
-type DrawerCity = { name: string; lat: number | null; lon: number | null }
-type DrawerCityGroup = { zone: string; cities: DrawerCity[] }
-const CITY_PREVIEW_LIMIT = 5
-
-function getPreviewCities(groups: DrawerCityGroup[]) {
-  return groups.flatMap((group) => group.cities)
-}
-
-function groupSystemCitiesByZone(cities: EnrichedCity[] | undefined): DrawerCityGroup[] {
-  if (!cities || cities.length === 0) {
-    return []
-  }
-
-  const groups = new Map<string, DrawerCity[]>()
-  for (const city of cities) {
-    const zone = city.zone_en?.trim() || 'Unknown zone'
-    const nextCity = {
-      name: city.en || city.he,
-      lat: city.lat,
-      lon: city.lng,
-    }
-    const current = groups.get(zone)
-    if (current) {
-      current.push(nextCity)
-      continue
-    }
-
-    groups.set(zone, [nextCity])
-  }
-
-  return Array.from(groups.entries()).map(([zone, groupedCities]) => ({
-    zone,
-    cities: groupedCities,
-  }))
-}
-
-function getAlertCityGroups(alert: RocketAlert): DrawerCityGroup[] {
-  if (alert.citiesDetail && alert.citiesDetail.length > 0) {
-    return groupAlertCitiesByZone(alert).map((group) => ({
-      zone: group.zone,
-      cities: group.cities.map((city) => ({
-        name: city.name,
-        lat: city.lat,
-        lon: city.lon,
-      })),
-    }))
-  }
-
-  return [
-    {
-      zone: alert.areaNameEn || 'Alert',
-      cities: [
-        {
-          name: alert.englishName || alert.name,
-          lat: alert.lat || null,
-          lon: alert.lon || null,
-        },
-      ],
-    },
-  ]
-}
-
-function getCardGroups(item: DrawerCardItem): DrawerCityGroup[] {
-  return item.kind === 'alert'
-    ? getAlertCityGroups(item.alert)
-    : groupSystemCitiesByZone(item.message.citiesEnriched)
-}
-
-function getCardTitle(item: DrawerCardItem) {
-  if (item.kind === 'alert') {
-    return item.alert.areaNameEn || item.alert.englishName || item.alert.name
-  }
-
-  return item.message.titleEn || item.message.titleHe || 'System message'
-}
-
-function getCardBody(item: DrawerCardItem) {
-  if (item.kind === 'alert') {
-    return `${getAlertTypeLabel(item.alert.alertTypeId)} - ${formatAlertShelterInstruction(item.alert.countdownSec)}`
-  }
-
-  return item.message.bodyEn || item.message.bodyHe || ''
-}
+const INITIAL_VISIBLE_COUNT = 60
+const VISIBLE_COUNT_STEP = 60
+const MINUTE_MS = 60_000
 
 function isCityFocusable(city: DrawerCity) {
   return city.lat != null && city.lon != null && city.lat !== 0 && city.lon !== 0
@@ -144,28 +44,57 @@ function getDateText(timestampMs: number) {
   }).format(timestampMs)
 }
 
+function getInitialRelativeNow() {
+  const now = Date.now()
+  return now - (now % MINUTE_MS)
+}
+
+function getNextMinuteDelay(now: number) {
+  const remainder = now % MINUTE_MS
+  return remainder === 0 ? MINUTE_MS : MINUTE_MS - remainder
+}
+
+function useRelativeNow() {
+  const [relativeNow, setRelativeNow] = useState(() => getInitialRelativeNow())
+
+  useEffect(() => {
+    let intervalId: number | null = null
+    const timeoutId = window.setTimeout(() => {
+      setRelativeNow(getInitialRelativeNow())
+      intervalId = window.setInterval(() => {
+        setRelativeNow(getInitialRelativeNow())
+      }, MINUTE_MS)
+    }, getNextMinuteDelay(Date.now()))
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      if (intervalId !== null) {
+        window.clearInterval(intervalId)
+      }
+    }
+  }, [])
+
+  return relativeNow
+}
+
 function DrawerCityPreview({
   color,
-  groups,
+  cities,
   itemKey,
   onFocusCity,
 }: {
-  color: 'red' | 'green' | 'orange' | 'blue'
-  groups: DrawerCityGroup[]
+  color: DrawerCardViewModel['color']
+  cities: DrawerCity[]
   itemKey: string
   onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
 }) {
-  const cities = getPreviewCities(groups)
-  const visibleCities = cities.slice(0, CITY_PREVIEW_LIMIT)
-  const hiddenCount = cities.length - visibleCities.length
-
-  if (visibleCities.length === 0) {
+  if (cities.length === 0) {
     return null
   }
 
   return (
     <div className="alerts-city-chips alert-drawer-city-preview">
-      {visibleCities.map((city, index) => {
+      {cities.map((city, index) => {
         const hasCoord = isCityFocusable(city)
         return (
           <button
@@ -190,9 +119,6 @@ function DrawerCityPreview({
           </button>
         )
       })}
-      {hiddenCount > 0 ? (
-        <span className="alerts-city-chip alerts-city-chip-more">+{hiddenCount} daha</span>
-      ) : null}
     </div>
   )
 }
@@ -203,7 +129,7 @@ function DrawerExpandedGroups({
   itemKey,
   onFocusCity,
 }: {
-  color: 'red' | 'green' | 'orange' | 'blue'
+  color: DrawerCardViewModel['color']
   groups: DrawerCityGroup[]
   itemKey: string
   onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
@@ -250,6 +176,93 @@ function DrawerExpandedGroups({
   )
 }
 
+const AlertDrawerHeaderClock = memo(function AlertDrawerHeaderClock() {
+  const [clockNow, setClockNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setClockNow(Date.now())
+    }, 1_000)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [])
+
+  return (
+    <div className="alert-drawer-header-time">
+      <strong>{getClockText(clockNow)}</strong>
+      <span>{getDateText(clockNow)}</span>
+    </div>
+  )
+})
+
+const AlertDrawerCard = memo(function AlertDrawerCard({
+  item,
+  onFocusCity,
+  onSelect,
+  relativeNow,
+  selected,
+}: {
+  item: DrawerCardViewModel
+  onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
+  onSelect: (key: string) => void
+  relativeNow: number
+  selected: boolean
+}) {
+  const hiddenCount = item.groups.reduce((total, group) => total + group.cities.length, 0) - item.previewCities.length
+  const relativeTime = useMemo(
+    () => formatTimelineDualTime(item.timestampMs, relativeNow),
+    [item.timestampMs, relativeNow],
+  )
+
+  return (
+    <div className="alerts-card-wrapper alert-drawer-item">
+      <button
+        aria-expanded={selected}
+        aria-label={`Alarm olayi: ${item.title}`}
+        className={`alerts-card alerts-card-${item.color} alert-drawer-timeline-card${selected ? ' alerts-card-active alert-drawer-timeline-card-active' : ''}${item.isLive ? ' alerts-card-live' : ''}`}
+        onClick={() => onSelect(item.key)}
+        type="button"
+      >
+        <div className="alerts-card-body">
+          <strong className="alerts-card-title">{item.title}</strong>
+          <span className="alerts-card-time">{relativeTime}</span>
+          <span className="alerts-card-area">{item.body}</span>
+        </div>
+        <span aria-hidden="true" className="alerts-card-icon">
+          {item.icon}
+        </span>
+      </button>
+
+      {!selected ? (
+        <>
+          <DrawerCityPreview
+            cities={item.previewCities}
+            color={item.color}
+            itemKey={item.key}
+            onFocusCity={onFocusCity}
+          />
+          {hiddenCount > 0 ? (
+            <div className="alert-drawer-preview-meta">
+              <span className="alerts-city-chip alerts-city-chip-more">+{hiddenCount} daha</span>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {selected ? (
+        <DrawerExpandedGroups
+          color={item.color}
+          groups={item.groups}
+          itemKey={item.key}
+          onFocusCity={onFocusCity}
+        />
+      ) : null}
+    </div>
+  )
+})
+
 export function AlertDrawer({
   collapsed,
   enabled,
@@ -260,31 +273,67 @@ export function AlertDrawer({
   onSelectItem,
   onToggleCollapsed,
 }: AlertDrawerProps) {
-  const [now, setNow] = useState(() => Date.now())
   const [localSelectedKey, setLocalSelectedKey] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
+  const relativeNow = useRelativeNow()
 
-  useEffect(() => {
-    const timerId = window.setInterval(() => {
-      setNow(Date.now())
-    }, 1_000)
+  const effectiveSelectedKey = useMemo(() => {
+    const hasSelectedKey = selectedKey !== null && items.some((item) => item.key === selectedKey)
+    return (
+      (hasSelectedKey ? selectedKey : null) ??
+      (localSelectedKey && items.some((item) => item.key === localSelectedKey)
+        ? localSelectedKey
+        : (items[0]?.key ?? null))
+    )
+  }, [items, localSelectedKey, selectedKey])
 
-    return () => {
-      window.clearInterval(timerId)
+  const selectedIndex = useMemo(
+    () => items.findIndex((item) => item.key === effectiveSelectedKey),
+    [effectiveSelectedKey, items],
+  )
+
+  const effectiveVisibleCount = useMemo(() => {
+    if (selectedIndex < 0) {
+      return Math.min(visibleCount, items.length)
     }
-  }, [])
 
-  const hasSelectedKey = selectedKey !== null && items.some((item) => item.key === selectedKey)
-  const effectiveSelectedKey =
-    (hasSelectedKey ? selectedKey : null) ??
-    (localSelectedKey && items.some((item) => item.key === localSelectedKey)
-      ? localSelectedKey
-      : (items[0]?.key ?? null))
+    return Math.min(Math.max(visibleCount, selectedIndex + 1), items.length)
+  }, [items.length, selectedIndex, visibleCount])
+
+  const visibleItems = useMemo(
+    () => items.slice(0, effectiveVisibleCount),
+    [effectiveVisibleCount, items],
+  )
+
+  const canLoadMore = effectiveVisibleCount < items.length
+
+  const handleSelect = useCallback(
+    (key: string) => {
+      setLocalSelectedKey(key)
+      onSelectItem(key)
+    },
+    [onSelectItem],
+  )
+
+  const handleCollapse = useCallback(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT)
+    onToggleCollapsed()
+  }, [onToggleCollapsed])
+
+  const handleExpand = useCallback(() => {
+    onToggleCollapsed()
+  }, [onToggleCollapsed])
+
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount((current) => Math.min(current + VISIBLE_COUNT_STEP, items.length))
+  }, [items.length])
+
   if (collapsed) {
     return (
       <button
         aria-label="Alarm drawer'ini ac"
         className="alert-drawer-collapsed-handle"
-        onClick={onToggleCollapsed}
+        onClick={handleExpand}
         type="button"
       >
         {'>'}
@@ -298,15 +347,12 @@ export function AlertDrawer({
         <button
           aria-label="Alarm drawer'ini kapat"
           className="alert-drawer-header-toggle"
-          onClick={onToggleCollapsed}
+          onClick={handleCollapse}
           type="button"
         >
           {'<'}
         </button>
-        <div className="alert-drawer-header-time">
-          <strong>{getClockText(now)}</strong>
-          <span>{getDateText(now)}</span>
-        </div>
+        <AlertDrawerHeaderClock />
       </div>
 
       <div className="alert-drawer-section-header">
@@ -320,64 +366,21 @@ export function AlertDrawer({
         <p className="alert-drawer-empty">Son 24 saatte goruntulenecek olay yok.</p>
       ) : (
         <div className="alert-drawer-list">
-          {items.map((item) => {
-            const isSelected = item.key === effectiveSelectedKey
-            const color = getTimelineItemColor(
-              item.kind === 'alert'
-                ? { kind: 'alert', alert: item.alert, timestampMs: item.timestampMs, isActive: item.isLive }
-                : { kind: 'system', message: item.message, timestampMs: item.timestampMs },
-            )
-            const icon = getTimelineItemIcon(
-              item.kind === 'alert'
-                ? { kind: 'alert', alert: item.alert, timestampMs: item.timestampMs, isActive: item.isLive }
-                : { kind: 'system', message: item.message, timestampMs: item.timestampMs },
-            )
-            const groups = getCardGroups(item)
-
-            return (
-              <div className="alerts-card-wrapper alert-drawer-item" key={item.key}>
-                <button
-                  aria-expanded={isSelected}
-                  aria-label={`Alarm olayi: ${getCardTitle(item)}`}
-                  className={`alerts-card alerts-card-${color} alert-drawer-timeline-card${isSelected ? ' alerts-card-active alert-drawer-timeline-card-active' : ''}${item.isLive ? ' alerts-card-live' : ''}`}
-                  onClick={() => {
-                    setLocalSelectedKey(item.key)
-                    onSelectItem(item.key)
-                  }}
-                  type="button"
-                >
-                  <div className="alerts-card-body">
-                    <strong className="alerts-card-title">{getCardTitle(item)}</strong>
-                    <span className="alerts-card-time">
-                      {formatTimelineDualTime(item.timestampMs, now)}
-                    </span>
-                    <span className="alerts-card-area">{getCardBody(item)}</span>
-                  </div>
-                  <span className="alerts-card-icon" aria-hidden="true">
-                    {icon}
-                  </span>
-                </button>
-
-                {!isSelected ? (
-                  <DrawerCityPreview
-                    color={color}
-                    groups={groups}
-                    itemKey={item.key}
-                    onFocusCity={onFocusCity}
-                  />
-                ) : null}
-
-                {isSelected ? (
-                  <DrawerExpandedGroups
-                    color={color}
-                    groups={groups}
-                    itemKey={item.key}
-                    onFocusCity={onFocusCity}
-                  />
-                ) : null}
-              </div>
-            )
-          })}
+          {visibleItems.map((item) => (
+            <AlertDrawerCard
+              item={item}
+              key={item.key}
+              onFocusCity={onFocusCity}
+              onSelect={handleSelect}
+              relativeNow={relativeNow}
+              selected={item.key === effectiveSelectedKey}
+            />
+          ))}
+          {canLoadMore ? (
+            <button className="alert-drawer-load-more" onClick={handleLoadMore} type="button">
+              60 daha yukle
+            </button>
+          ) : null}
         </div>
       )}
     </aside>

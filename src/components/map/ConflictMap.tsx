@@ -55,7 +55,12 @@ import {
   isIncidentStreamSystemMessage,
   type RocketAlert,
 } from '@/features/alerts/types'
-import { AlertDrawer, type DrawerCardItem } from '@/features/alerts/AlertDrawer'
+import { AlertDrawer } from '@/features/alerts/AlertDrawer'
+import {
+  buildDrawerCardViewModels,
+  type DrawerCardItem,
+  type DrawerCardViewModel,
+} from '@/features/alerts/alertDrawerModel'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 import {
   createTzevaadomFeed,
@@ -4373,7 +4378,7 @@ export function ConflictMap({
     [missileRuntimeFlights],
   )
   const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
-  const drawerItems = useMemo<DrawerCardItem[]>(() => {
+  const drawerItems = useMemo<DrawerCardViewModel[]>(() => {
     const activeAlertIds = new Set(alerts.map((alert) => alert.id))
     const nextItems: DrawerCardItem[] = [
       ...historyAlerts.map((alert) => ({
@@ -4402,7 +4407,7 @@ export function ConflictMap({
       return right.key.localeCompare(left.key, 'en')
     })
 
-    return nextItems.slice(0, 300)
+    return buildDrawerCardViewModels(nextItems.slice(0, 300))
   }, [alerts, historyAlerts, systemMessages])
   const selectedDrawerItemKey = useMemo(() => {
     if (focusedSystemMessageKey) {
@@ -4424,12 +4429,12 @@ export function ConflictMap({
 
     if (item.kind === 'alert') {
       setFocusedSystemMessageKey(null)
-      setSelectedAlertId(item.alert.id)
+      setSelectedAlertId(item.alertId)
       return
     }
 
     setSelectedAlertId(null)
-    setFocusedSystemMessageKey(getSystemMessageStreamKey(item.message))
+    setFocusedSystemMessageKey(item.systemMessageKey)
   }, [drawerItems, setFocusedSystemMessageKey, setSelectedAlertId])
 
   return (

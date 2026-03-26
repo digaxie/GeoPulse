@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { AlertDrawer, type DrawerCardItem } from '@/features/alerts/AlertDrawer'
+import { AlertDrawer } from '@/features/alerts/AlertDrawer'
+import { buildDrawerCardViewModels, type DrawerCardItem } from '@/features/alerts/alertDrawerModel'
 import type { RocketAlert } from '@/features/alerts/types'
 import type { TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 
@@ -80,6 +81,35 @@ const items: DrawerCardItem[] = [
     message: earlyWarningMessage,
   },
 ]
+const viewItems = buildDrawerCardViewModels(items)
+
+function createAlertItem(index: number): DrawerCardItem {
+  const occurredAtMs = Date.UTC(2026, 2, 26, 15, 0, 0) - index * 60_000
+  return {
+    key: `alert:bulk-${index}`,
+    kind: 'alert',
+    timestampMs: occurredAtMs,
+    isLive: index < 2,
+    alert: {
+      ...singleCityAlert,
+      id: `bulk-${index}`,
+      englishName: `City ${index}`,
+      name: `City ${index}`,
+      areaNameEn: `Zone ${index}`,
+      occurredAtMs,
+      fetchedAtMs: occurredAtMs,
+      citiesDetail: [
+        {
+          name: `City ${index}`,
+          lat: 33 + index / 1000,
+          lon: 35 + index / 1000,
+          zone: `Zone ${index}`,
+          countdown: 90,
+        },
+      ],
+    },
+  }
+}
 
 describe('AlertDrawer', () => {
   it('selects and expands the newest card by default', () => {
@@ -88,7 +118,7 @@ describe('AlertDrawer', () => {
         collapsed={false}
         enabled
         historyTruncated={false}
-        items={items}
+        items={viewItems}
         onFocusCity={vi.fn()}
         onSelectItem={vi.fn()}
         onToggleCollapsed={vi.fn()}
@@ -113,7 +143,7 @@ describe('AlertDrawer', () => {
         collapsed={false}
         enabled
         historyTruncated
-        items={items}
+        items={viewItems}
         onFocusCity={vi.fn()}
         onSelectItem={onSelectItem}
         onToggleCollapsed={onToggleCollapsed}
@@ -131,7 +161,7 @@ describe('AlertDrawer', () => {
         collapsed={false}
         enabled
         historyTruncated
-        items={items}
+        items={viewItems}
         onFocusCity={vi.fn()}
         onSelectItem={onSelectItem}
         onToggleCollapsed={onToggleCollapsed}
@@ -147,7 +177,7 @@ describe('AlertDrawer', () => {
         collapsed
         enabled
         historyTruncated={false}
-        items={items}
+        items={viewItems}
         onFocusCity={vi.fn()}
         onSelectItem={onSelectItem}
         onToggleCollapsed={onToggleCollapsed}
@@ -158,4 +188,30 @@ describe('AlertDrawer', () => {
     await user.click(screen.getByRole('button', { name: "Alarm drawer'ini ac" }))
     expect(onToggleCollapsed).toHaveBeenCalled()
   })
+
+  it('renders 60 cards initially, loads more, and keeps selected card visible', async () => {
+    const user = userEvent.setup()
+    const bulkItems = buildDrawerCardViewModels(Array.from({ length: 70 }, (_, index) => createAlertItem(index)))
+    const selectedKey = bulkItems[64]!.key
+
+    const { container } = render(
+      <AlertDrawer
+        collapsed={false}
+        enabled
+        historyTruncated={false}
+        items={bulkItems}
+        onFocusCity={vi.fn()}
+        onSelectItem={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+        selectedKey={selectedKey}
+      />,
+    )
+
+    expect(container.querySelectorAll('.alert-drawer-timeline-card')).toHaveLength(65)
+    expect(screen.getByRole('button', { name: '60 daha yukle' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Alarm olayi: Zone 64' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '60 daha yukle' }))
+    expect(container.querySelectorAll('.alert-drawer-timeline-card')).toHaveLength(70)
+  }, 15000)
 })
