@@ -36,6 +36,7 @@ type AlertStore = {
   setFeedTransport: (transport: AlertFeedTransport) => void
   setSelectedAlertId: (alertId: string | null) => void
   setRetentionMs: (retentionMs: number) => void
+  pruneActiveAlerts: (now?: number) => void
   dismissCurrentAlerts: (cutoffMs?: number) => void
   clearAlerts: () => void
   setTzevaadomStatus: (status: TzevaadomConnectionStatus) => void
@@ -114,6 +115,26 @@ function normalizeHistoryAlerts(alerts: RocketAlert[], now = Date.now()) {
   return sortAlertsByNewest(Array.from(merged.values())).slice(0, ALERT_HISTORY_LIMIT)
 }
 
+function normalizeActiveAlerts(alerts: RocketAlert[], retentionMs: number, dismissedBeforeMs: number | null, now = Date.now()) {
+  const visibleAlerts = alerts.filter((alert) => {
+    if (alert.occurredAtMs > now) {
+      return false
+    }
+
+    if (now - alert.occurredAtMs > retentionMs) {
+      return false
+    }
+
+    if (dismissedBeforeMs !== null && alert.occurredAtMs <= dismissedBeforeMs) {
+      return false
+    }
+
+    return true
+  })
+
+  return sortAlertsByNewest(visibleAlerts)
+}
+
 export const useAlertStore = create<AlertStore>((set) => ({
   alerts: [],
   historyAlerts: [],
@@ -131,11 +152,12 @@ export const useAlertStore = create<AlertStore>((set) => ({
 
   setAlerts(alerts, fetchedAt = null) {
     set((current) => {
-      const dismissedBeforeMs = current.dismissedBeforeMs
-      const visibleAlerts =
-        dismissedBeforeMs === null
-          ? alerts
-          : alerts.filter((alert) => alert.occurredAtMs > dismissedBeforeMs)
+      const visibleAlerts = normalizeActiveAlerts(
+        alerts,
+        current.retentionMs,
+        current.dismissedBeforeMs,
+        fetchedAt ?? Date.now(),
+      )
       const nextSelectedAlertId = resolveSelectedAlertId(
         current.selectedAlertId,
         visibleAlerts,
@@ -235,7 +257,58 @@ export const useAlertStore = create<AlertStore>((set) => ({
     const nextRetentionMs = Math.round(
       Math.min(MAX_ALERT_RETENTION_MS, Math.max(MIN_ALERT_RETENTION_MS, retentionMs)),
     )
-    set((current) => (current.retentionMs === nextRetentionMs ? current : { retentionMs: nextRetentionMs }))
+    set((current) => {
+      if (current.retentionMs === nextRetentionMs) {
+        return current
+      }
+
+      const now = Date.now()
+      const nextAlerts = normalizeActiveAlerts(
+        current.alerts,
+        nextRetentionMs,
+        current.dismissedBeforeMs,
+        now,
+      )
+      const nextSelectedAlertId = resolveSelectedAlertId(
+        current.selectedAlertId,
+        nextAlerts,
+        current.historyAlerts,
+      )
+
+      return {
+        retentionMs: nextRetentionMs,
+        alerts: nextAlerts,
+        selectedAlertId: nextSelectedAlertId,
+      }
+    })
+  },
+
+  pruneActiveAlerts(now = Date.now()) {
+    set((current) => {
+      const nextAlerts = normalizeActiveAlerts(
+        current.alerts,
+        current.retentionMs,
+        current.dismissedBeforeMs,
+        now,
+      )
+      const nextSelectedAlertId = resolveSelectedAlertId(
+        current.selectedAlertId,
+        nextAlerts,
+        current.historyAlerts,
+      )
+
+      if (
+        areAlertsEqual(current.alerts, nextAlerts) &&
+        current.selectedAlertId === nextSelectedAlertId
+      ) {
+        return current
+      }
+
+      return {
+        alerts: nextAlerts,
+        selectedAlertId: nextSelectedAlertId,
+      }
+    })
   },
 
   dismissCurrentAlerts(cutoffMs = Date.now()) {

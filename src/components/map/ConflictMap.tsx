@@ -896,12 +896,14 @@ export function ConflictMap({
   const resetMissileRuntime = useMissileStore((state) => state.resetRuntime)
   const alerts = useAlertStore((state) => state.alerts)
   const historyAlerts = useAlertStore((state) => state.historyAlerts)
+  const alertRetentionMs = useAlertStore((state) => state.retentionMs)
   const selectedAlertId = useAlertStore((state) => state.selectedAlertId)
   const setAlertFeedStatus = useAlertStore((state) => state.setFeedStatus)
   const setAlertFeedTransport = useAlertStore((state) => state.setFeedTransport)
   const setAlertStoreAlerts = useAlertStore((state) => state.setAlerts)
   const mergeAlertHistoryIntoStore = useAlertStore((state) => state.mergeHistoryAlerts)
   const pruneAlertHistory = useAlertStore((state) => state.pruneHistoryAlerts)
+  const pruneActiveAlerts = useAlertStore((state) => state.pruneActiveAlerts)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
@@ -1412,6 +1414,24 @@ export function ConflictMap({
       window.clearInterval(timerId)
     }
   }, [alertsEnabled, pruneAlertHistory])
+
+  useEffect(() => {
+    if (!alertsEnabled || alerts.length === 0) {
+      return
+    }
+
+    const now = Date.now()
+    const nextExpiryAtMs = Math.min(...alerts.map((alert) => alert.occurredAtMs + alertRetentionMs))
+    const delayMs = Math.max(0, nextExpiryAtMs - now)
+
+    const timerId = window.setTimeout(() => {
+      pruneActiveAlerts(Date.now())
+    }, delayMs)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [alertRetentionMs, alerts, alertsEnabled, pruneActiveAlerts])
 
   // ── Tzeva Adom WebSocket Feed ──
   useEffect(() => {

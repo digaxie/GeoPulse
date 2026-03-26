@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_ALERT_RETENTION_MS, type RocketAlert } from '@/features/alerts/types'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
@@ -32,6 +32,10 @@ describe('useAlertStore', () => {
     })
   })
 
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('keeps selected alert only while it still exists in the feed', () => {
     useAlertStore.getState().setAlerts([sampleAlert], sampleAlert.fetchedAtMs)
     useAlertStore.getState().setSelectedAlertId(sampleAlert.id)
@@ -49,8 +53,9 @@ describe('useAlertStore', () => {
   })
 
   it('can dismiss current alerts until newer ones arrive', () => {
-    useAlertStore.getState().setAlerts([sampleAlert], sampleAlert.fetchedAtMs)
-    useAlertStore.getState().setHistoryAlerts([sampleAlert], sampleAlert.fetchedAtMs)
+    const now = sampleAlert.occurredAtMs + 10_000
+    useAlertStore.getState().setAlerts([sampleAlert], now)
+    useAlertStore.getState().setHistoryAlerts([sampleAlert], now)
     useAlertStore.getState().dismissCurrentAlerts(sampleAlert.occurredAtMs)
     useAlertStore.getState().setAlerts(
       [
@@ -62,7 +67,7 @@ describe('useAlertStore', () => {
           occurredAtMs: sampleAlert.occurredAtMs + 1,
         },
       ],
-      sampleAlert.fetchedAtMs + 5000,
+      now + 5_000,
     )
 
     expect(useAlertStore.getState().alerts.map((alert) => alert.id)).toEqual(['alert-2'])
@@ -74,6 +79,27 @@ describe('useAlertStore', () => {
     useAlertStore.getState().setRetentionMs(30_000)
 
     expect(useAlertStore.getState().feedTransport).toBe('stream')
+    expect(useAlertStore.getState().retentionMs).toBe(30_000)
+  })
+
+  it('prunes active alerts once they exceed the configured retention window', () => {
+    const now = sampleAlert.occurredAtMs + 31_000
+    useAlertStore.getState().setRetentionMs(30_000)
+    useAlertStore.getState().setAlerts([sampleAlert], sampleAlert.fetchedAtMs)
+
+    useAlertStore.getState().pruneActiveAlerts(now)
+
+    expect(useAlertStore.getState().alerts).toEqual([])
+  })
+
+  it('immediately drops active alerts when retention is shortened below their age', () => {
+    const now = sampleAlert.occurredAtMs + 45_000
+    useAlertStore.getState().setAlerts([sampleAlert], now)
+
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    useAlertStore.getState().setRetentionMs(30_000)
+
+    expect(useAlertStore.getState().alerts).toEqual([])
     expect(useAlertStore.getState().retentionMs).toBe(30_000)
   })
 

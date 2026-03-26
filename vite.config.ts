@@ -65,7 +65,7 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
       css: true,
-      exclude: [...configDefaults.exclude, '.codex-tmp-push/**'],
+      exclude: [...configDefaults.exclude, '.codex-*/**'],
       coverage: {
         reporter: ['text', 'html'],
       },
