@@ -116,7 +116,7 @@ type ScenarioStore = {
   setBannerAutoDismissSec: (seconds: number) => void
   setSharedAlertPresentationState: (input: {
     selectedAlertId: string | null
-    focusedSystemMessageId: number | null
+    focusedSystemMessageKey: string | null
   }) => void
   toggleMissileSelection: (missileId: string) => void
   setActiveMissile: (missileId: string | null) => void
@@ -815,7 +815,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
       const alertsState = getAlertSettings(current.document)
       if (
         alertsState.sharedSelectedAlertId === input.selectedAlertId &&
-        alertsState.sharedFocusedSystemMessageId === input.focusedSystemMessageId
+        alertsState.sharedFocusedSystemMessageKey === input.focusedSystemMessageKey
       ) {
         return current
       }
@@ -828,7 +828,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
             alerts: {
               ...alertsState,
               sharedSelectedAlertId: input.selectedAlertId,
-              sharedFocusedSystemMessageId: input.focusedSystemMessageId,
+              sharedFocusedSystemMessageKey: input.focusedSystemMessageKey,
             },
           },
           { trackHistory: false },

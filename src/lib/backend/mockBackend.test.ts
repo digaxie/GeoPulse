@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { createDefaultScenarioDocument } from '@/features/scenario/defaults'
-import { mockBackend } from '@/lib/backend/mockBackend'
+import { getMockBackendSeedCredentials, mockBackend } from '@/lib/backend/mockBackend'
 
 function createTextDocument(text: string, revision: number) {
   return {
@@ -42,7 +42,8 @@ describe('mockBackend', () => {
   })
 
   it('creates managed users and allows login with the generated password', async () => {
-    await mockBackend.login('admin', 'demo123')
+    const seedCredentials = getMockBackendSeedCredentials()
+    await mockBackend.login(seedCredentials.username, seedCredentials.password)
 
     const result = await mockBackend.createUser({ username: 'analist' })
 
@@ -58,7 +59,8 @@ describe('mockBackend', () => {
   })
 
   it('prevents a second editor from taking an active lock', async () => {
-    const firstSession = await mockBackend.login('admin', 'demo123')
+    const seedCredentials = getMockBackendSeedCredentials()
+    const firstSession = await mockBackend.login(seedCredentials.username, seedCredentials.password)
     const secondUser = await mockBackend.createUser({ username: 'ikinci' })
     const scenario = await mockBackend.createScenario({ title: 'Kilit Testi' })
     await mockBackend.claimEditorLock(scenario.id, firstSession)
@@ -70,13 +72,15 @@ describe('mockBackend', () => {
   })
 
   it('prevents demoting the last admin', async () => {
-    const adminSession = await mockBackend.login('admin', 'demo123')
+    const seedCredentials = getMockBackendSeedCredentials()
+    const adminSession = await mockBackend.login(seedCredentials.username, seedCredentials.password)
 
     await expect(mockBackend.updateUserRole(adminSession.id, 'user')).rejects.toThrow(/son admin/i)
   })
 
   it('creates and restores snapshots with an active editor lock', async () => {
-    const adminSession = await mockBackend.login('admin', 'demo123')
+    const seedCredentials = getMockBackendSeedCredentials()
+    const adminSession = await mockBackend.login(seedCredentials.username, seedCredentials.password)
     const scenario = await mockBackend.createScenario({ title: 'Snapshot Testi' })
     await mockBackend.claimEditorLock(scenario.id, adminSession)
 

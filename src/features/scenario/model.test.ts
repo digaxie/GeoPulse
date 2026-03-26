@@ -21,6 +21,9 @@ describe('scenarioDocumentSchema', () => {
       editorVolume: 0.55,
       presentationSoundEnabled: false,
       presentationVolume: 0.55,
+      bannerAutoDismissSec: 15,
+      sharedSelectedAlertId: null,
+      sharedFocusedSystemMessageKey: null,
     })
     expect(parsed.missiles).toEqual({
       selectedMissileIds: [],

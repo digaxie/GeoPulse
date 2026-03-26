@@ -133,6 +133,9 @@ describe('migrateScenarioDocument', () => {
       editorVolume: 0.55,
       presentationSoundEnabled: false,
       presentationVolume: 0.55,
+      bannerAutoDismissSec: 15,
+      sharedSelectedAlertId: null,
+      sharedFocusedSystemMessageKey: null,
     })
   })
 
@@ -154,6 +157,9 @@ describe('migrateScenarioDocument', () => {
       editorVolume: 0.8,
       presentationSoundEnabled: true,
       presentationVolume: 0.8,
+      bannerAutoDismissSec: 15,
+      sharedSelectedAlertId: null,
+      sharedFocusedSystemMessageKey: null,
     })
   })
 

@@ -74,6 +74,7 @@ describe('useAlertStore', () => {
     useAlertStore.setState({
       alerts: [],
       historyAlerts: [],
+      historyTruncated: false,
       feedStatus: 'disconnected',
       feedTransport: 'none',
       lastFetchedAt: null,
@@ -82,7 +83,7 @@ describe('useAlertStore', () => {
       retentionMs: DEFAULT_ALERT_RETENTION_MS,
       tzevaadomStatus: 'disconnected',
       systemMessages: [],
-      focusedSystemMessageId: null,
+      focusedSystemMessageKey: null,
       incidentStreamItems: [],
       focusedIncidentStreamKey: null,
       alertsPanelRevealNonce: 0,
@@ -173,6 +174,34 @@ describe('useAlertStore', () => {
     expect(useAlertStore.getState().selectedAlertId).toBe(sampleAlert.id)
   })
 
+  it('keeps previously active alerts when a newer merged batch includes old and new ids', () => {
+    const newerAlert: RocketAlert = {
+      ...sampleAlert,
+      id: 'alert-2',
+      englishName: 'Avivim',
+      occurredAtMs: sampleAlert.occurredAtMs + 5_000,
+      fetchedAtMs: sampleAlert.occurredAtMs + 6_000,
+      timeStampRaw: '2026-03-22 06:15:28',
+    }
+    const now = newerAlert.occurredAtMs + 1_000
+
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+
+    useAlertStore.getState().setAlerts(
+      [{ ...sampleAlert, fetchedAtMs: sampleAlert.occurredAtMs + 1_000 }],
+      sampleAlert.occurredAtMs + 1_000,
+    )
+    useAlertStore.getState().setAlerts(
+      [{ ...sampleAlert, fetchedAtMs: sampleAlert.occurredAtMs + 1_000 }, newerAlert],
+      newerAlert.fetchedAtMs,
+    )
+
+    expect(useAlertStore.getState().alerts.map((alert) => alert.id)).toEqual([
+      'alert-2',
+      'alert-1',
+    ])
+  })
+
   it('prunes and caps 24 hour history independently from active alerts', () => {
     const now = sampleAlert.fetchedAtMs
     useAlertStore.getState().setHistoryAlerts(
@@ -194,6 +223,16 @@ describe('useAlertStore', () => {
 
     expect(useAlertStore.getState().historyAlerts).toHaveLength(250)
     expect(useAlertStore.getState().historyAlerts.some((alert) => alert.id === 'expired-history')).toBe(false)
+  })
+
+  it('stores whether the 24 hour history view is truncated', () => {
+    useAlertStore.getState().setHistoryTruncated(true)
+
+    expect(useAlertStore.getState().historyTruncated).toBe(true)
+
+    useAlertStore.getState().clearAlerts()
+
+    expect(useAlertStore.getState().historyTruncated).toBe(false)
   })
 
   it('starts a live incident stream with the first grouped alert and appends newer grouped alerts without stealing focus', () => {

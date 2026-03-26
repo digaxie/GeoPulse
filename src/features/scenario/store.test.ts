@@ -329,6 +329,9 @@ describe('useScenarioStore', () => {
       editorVolume: 0.8,
       presentationSoundEnabled: true,
       presentationVolume: 0.35,
+      bannerAutoDismissSec: 15,
+      sharedSelectedAlertId: null,
+      sharedFocusedSystemMessageKey: null,
     })
   })
 

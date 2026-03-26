@@ -115,7 +115,7 @@ function TimelineCard({
   now: number
   active: boolean
   onSelect: (id: string | null) => void
-  onSelectSystem: (id: number | null) => void
+  onSelectSystem: (key: string | null) => void
   onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
 }) {
   const color = getTimelineItemColor(item)
@@ -156,7 +156,7 @@ function TimelineCard({
     <div className="alerts-card-wrapper">
       <button
         className={`alerts-card alerts-card-${color}${active ? ' alerts-card-active' : ''}`}
-        onClick={() => hasCities ? onSelectSystem(msg.id) : undefined}
+        onClick={() => hasCities ? onSelectSystem(getSystemMessageStreamKey(msg)) : undefined}
         type="button"
         style={hasCities ? undefined : { cursor: 'default' }}
       >
@@ -181,12 +181,13 @@ type AlertsPanelProps = {
 export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const alerts = useAlertStore((state) => state.alerts)
   const historyAlerts = useAlertStore((state) => state.historyAlerts)
+  const historyTruncated = useAlertStore((state) => state.historyTruncated)
   const systemMessages = useAlertStore((state) => state.systemMessages)
   const feedStatus = useAlertStore((state) => state.feedStatus)
   const selectedAlertId = useAlertStore((state) => state.selectedAlertId)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
-  const focusedSystemMessageId = useAlertStore((state) => state.focusedSystemMessageId)
-  const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
+  const focusedSystemMessageKey = useAlertStore((state) => state.focusedSystemMessageKey)
+  const setFocusedSystemMessageKey = useAlertStore((state) => state.setFocusedSystemMessageKey)
   const incidentStreamItems = useAlertStore((state) => state.incidentStreamItems)
   const focusedIncidentStreamKey = useAlertStore((state) => state.focusedIncidentStreamKey)
   const focusIncidentStreamItem = useAlertStore((state) => state.focusIncidentStreamItem)
@@ -319,11 +320,12 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   }, [alertsById, selectedAlertId])
 
   const selectedSystemDockItem = useMemo(() => {
-    if (focusedSystemMessageId === null) {
+    if (focusedSystemMessageKey === null) {
       return null
     }
 
-    const message = systemMessages.find((candidate) => candidate.id === focusedSystemMessageId) ?? null
+    const message =
+      systemMessages.find((candidate) => getSystemMessageStreamKey(candidate) === focusedSystemMessageKey) ?? null
     if (
       !message ||
       !isIncidentStreamSystemMessage(message) ||
@@ -340,7 +342,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
       isLive: false,
       message,
     } satisfies AlertIncidentDockItem
-  }, [focusedSystemMessageId, systemMessages])
+  }, [focusedSystemMessageKey, systemMessages])
 
   const focusedLiveIncidentItem = useMemo(
     () =>
@@ -360,13 +362,13 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
     }
 
     if (item.kind === 'alert') {
-      setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
       setSelectedAlertId(item.alert.id)
       return
     }
 
     setSelectedAlertId(null)
-    setFocusedSystemMessageId(item.message.id)
+    setFocusedSystemMessageKey(getSystemMessageStreamKey(item.message))
   }
 
   function handleSelectAlert(alertId: string | null) {
@@ -377,24 +379,24 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
 
     const alert = alertsById.get(alertId)
     if (alert && isGroupedIncidentAlert(alert)) {
-      setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
       setSelectedAlertId(alert.id)
       return
     }
 
-    setFocusedSystemMessageId(null)
+    setFocusedSystemMessageKey(null)
     setSelectedAlertId(alertId)
   }
 
-  function handleSelectSystem(id: number | null) {
+  function handleSelectSystem(key: string | null) {
     setSelectedAlertId(null)
-    setFocusedSystemMessageId(id)
+    setFocusedSystemMessageKey(key)
   }
 
   function handleDismissFocusedIncident() {
     clearIncidentStream()
     setSelectedAlertId(null)
-    setFocusedSystemMessageId(null)
+    setFocusedSystemMessageKey(null)
   }
 
   const statusLabel = getFeedStatusLabel(feedStatus)
@@ -553,9 +555,12 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
       ) : (
         <section className="alerts-section">
           <div className="alerts-section-header">
-            <h4>Son 24 Saat</h4>
+            <h4>{historyTruncated ? 'Son 24 Saat (kısmi)' : 'Son 24 Saat'}</h4>
             <span>{timeline.length}</span>
           </div>
+          {historyTruncated ? (
+            <p className="alerts-history-meta">ilk 1000 kayıt gösteriliyor</p>
+          ) : null}
           {timeline.length === 0 ? (
             <p className="panel-empty">Henüz kayıt yok.</p>
           ) : (
@@ -564,7 +569,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
                 const key = item.kind === 'alert' ? item.alert.id : `sys-${item.message.id}-${item.message.type}`
                 const isSelected = item.kind === 'alert'
                   ? selectedAlertId === item.alert.id
-                  : focusedSystemMessageId === item.message.id
+                  : focusedSystemMessageKey === getSystemMessageStreamKey(item.message)
                 return (
                   <TimelineCard
                     key={key}

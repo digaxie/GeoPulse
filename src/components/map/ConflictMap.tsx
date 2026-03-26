@@ -913,6 +913,7 @@ export function ConflictMap({
   const resetMissileRuntime = useMissileStore((state) => state.resetRuntime)
   const alerts = useAlertStore((state) => state.alerts)
   const historyAlerts = useAlertStore((state) => state.historyAlerts)
+  const setHistoryTruncated = useAlertStore((state) => state.setHistoryTruncated)
   const alertRetentionMs = useAlertStore((state) => state.retentionMs)
   const selectedAlertId = useAlertStore((state) => state.selectedAlertId)
   const setAlertFeedStatus = useAlertStore((state) => state.setFeedStatus)
@@ -933,8 +934,8 @@ export function ConflictMap({
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
   const addSystemMessage = useAlertStore((state) => state.addSystemMessage)
-  const focusedSystemMessageId = useAlertStore((state) => state.focusedSystemMessageId)
-  const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
+  const focusedSystemMessageKey = useAlertStore((state) => state.focusedSystemMessageKey)
+  const setFocusedSystemMessageKey = useAlertStore((state) => state.setFocusedSystemMessageKey)
   const systemMessages = useAlertStore((state) => state.systemMessages)
   const alertSettings = useScenarioStore((state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS)
   const setSharedAlertPresentationState = useScenarioStore(
@@ -1531,7 +1532,7 @@ export function ConflictMap({
             : null
           const hasIncidentDockFocus =
             currentState.focusedIncidentStreamKey !== null ||
-            currentState.focusedSystemMessageId !== null ||
+            currentState.focusedSystemMessageKey !== null ||
             isGroupedIncidentAlert(selectedDockAlert)
 
           appendIncidentStreamAlert(rocketAlert.id, rocketAlert.occurredAtMs)
@@ -1579,7 +1580,8 @@ export function ConflictMap({
 
     // Supabase'den son 24 saatteki geÃ§miÅŸ alertleri Ã§ek
     if (publicViewerSupabase) {
-      fetchTzevaadomHistory(publicViewerSupabase, 24).then(({ alerts: histAlerts, systemMessages: histMsgs }) => {
+      fetchTzevaadomHistory(publicViewerSupabase, 24).then(({ alerts: histAlerts, systemMessages: histMsgs, truncated }) => {
+        setHistoryTruncated(truncated)
         const asRocketAlerts = histAlerts.map((a) => {
           const threatLabel = getThreatLabel(a.threat)
           const enriched = a.citiesEnriched ?? []
@@ -1616,7 +1618,9 @@ export function ConflictMap({
             addSystemMessage(msg)
           }
         }
-      }).catch(() => { /* ignore */ })
+      }).catch(() => {
+        setHistoryTruncated(false)
+      })
     }
 
     tzevaadomFeed.start()
@@ -3484,30 +3488,30 @@ export function ConflictMap({
       return
     }
 
-    const nextSharedSelectedAlertId = alertsEnabled && focusedSystemMessageId === null
+    const nextSharedSelectedAlertId = alertsEnabled && focusedSystemMessageKey === null
       ? selectedAlertId
       : null
-    const nextSharedFocusedSystemMessageId = alertsEnabled
-      ? focusedSystemMessageId
+    const nextSharedFocusedSystemMessageKey = alertsEnabled
+      ? focusedSystemMessageKey
       : null
 
     if (
       alertSettings.sharedSelectedAlertId === nextSharedSelectedAlertId &&
-      alertSettings.sharedFocusedSystemMessageId === nextSharedFocusedSystemMessageId
+      alertSettings.sharedFocusedSystemMessageKey === nextSharedFocusedSystemMessageKey
     ) {
       return
     }
 
     setSharedAlertPresentationState({
       selectedAlertId: nextSharedSelectedAlertId,
-      focusedSystemMessageId: nextSharedFocusedSystemMessageId,
+      focusedSystemMessageKey: nextSharedFocusedSystemMessageKey,
     })
   }, [
     access,
-    alertSettings.sharedFocusedSystemMessageId,
+    alertSettings.sharedFocusedSystemMessageKey,
     alertSettings.sharedSelectedAlertId,
     alertsEnabled,
-    focusedSystemMessageId,
+    focusedSystemMessageKey,
     selectedAlertId,
     setSharedAlertPresentationState,
   ])
@@ -3518,25 +3522,25 @@ export function ConflictMap({
     }
 
     const sharedSelectedAlertId = alertsEnabled ? alertSettings.sharedSelectedAlertId : null
-    const sharedFocusedSystemMessageId = alertsEnabled
-      ? alertSettings.sharedFocusedSystemMessageId
+    const sharedFocusedSystemMessageKey = alertsEnabled
+      ? alertSettings.sharedFocusedSystemMessageKey
       : null
 
     if (selectedAlertId !== sharedSelectedAlertId) {
       setSelectedAlertId(sharedSelectedAlertId)
     }
 
-    if (focusedSystemMessageId !== sharedFocusedSystemMessageId) {
-      setFocusedSystemMessageId(sharedFocusedSystemMessageId)
+    if (focusedSystemMessageKey !== sharedFocusedSystemMessageKey) {
+      setFocusedSystemMessageKey(sharedFocusedSystemMessageKey)
     }
   }, [
     access,
-    alertSettings.sharedFocusedSystemMessageId,
+    alertSettings.sharedFocusedSystemMessageKey,
     alertSettings.sharedSelectedAlertId,
     alertsEnabled,
-    focusedSystemMessageId,
+    focusedSystemMessageKey,
     selectedAlertId,
-    setFocusedSystemMessageId,
+    setFocusedSystemMessageKey,
     setSelectedAlertId,
   ])
 
@@ -3554,12 +3558,12 @@ export function ConflictMap({
     const bindings = alertBindingsRef.current
     if (!bindings) return
 
-    if (!alertsEnabled || !focusedSystemMessageId) {
+    if (!alertsEnabled || !focusedSystemMessageKey) {
       bindings.setWarningCities(null)
       return
     }
 
-    const msg = systemMessages.find((m) => m.id === focusedSystemMessageId)
+    const msg = systemMessages.find((m) => getSystemMessageStreamKey(m) === focusedSystemMessageKey)
     if (!msg?.citiesEnriched || msg.citiesEnriched.length === 0) {
       bindings.setWarningCities(null)
       return
@@ -3583,7 +3587,7 @@ export function ConflictMap({
         view.fit(ext, { duration: 500, maxZoom: 8.5, padding: [96, 56, 56, 56] })
       }
     }
-  }, [alertsEnabled, focusedSystemMessageId, systemMessages])
+  }, [alertsEnabled, focusedSystemMessageKey, systemMessages])
 
   // City chip click â†’ zoom to coordinate
   const focusCoordinate = useAlertStore((state) => state.focusCoordinate)
@@ -4038,7 +4042,7 @@ export function ConflictMap({
       ) {
         setInlineTextInput(null)
         setSelectedAlertId(clickedAlertId)
-        setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
         if (!readOnly && access === 'editor') {
           useScenarioStore.getState().setSelectedElementId(null)
         }
@@ -4047,7 +4051,7 @@ export function ConflictMap({
 
       if (readOnly || access !== 'editor') {
         setSelectedAlertId(null)
-        setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
         return
       }
 
@@ -4065,7 +4069,7 @@ export function ConflictMap({
         if (selectedTool === 'select') {
           setInlineTextInput(null)
           setSelectedAlertId(null)
-          setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
         }
         return
       }
@@ -4073,7 +4077,7 @@ export function ConflictMap({
       if (selectedTool === 'select') {
         setInlineTextInput(null)
         setSelectedAlertId(null)
-        setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
         useScenarioStore.getState().setSelectedElementId(null)
         return
       }
@@ -4125,7 +4129,7 @@ export function ConflictMap({
     return () => {
       map.un('singleclick', handler)
     }
-  }, [access, activeAssetId, addAssetElement, addTextElement, alertsEnabled, selectedTool, readOnly, setFocusedSystemMessageId, setMissileTarget, setSelectedAlertId, setTool, tabLifecycleState])
+  }, [access, activeAssetId, addAssetElement, addTextElement, alertsEnabled, selectedTool, readOnly, setFocusedSystemMessageKey, setMissileTarget, setSelectedAlertId, setTool, tabLifecycleState])
 
   // Eraser: drag-to-erase interaction
   useEffect(() => {
@@ -4472,11 +4476,12 @@ export function ConflictMap({
     } satisfies AlertIncidentDockItem
   }, [selectedAlert])
   const selectedSystemDockItem = useMemo(() => {
-    if (focusedSystemMessageId === null) {
+    if (focusedSystemMessageKey === null) {
       return null
     }
 
-    const message = systemMessages.find((candidate) => candidate.id === focusedSystemMessageId) ?? null
+    const message =
+      systemMessages.find((candidate) => getSystemMessageStreamKey(candidate) === focusedSystemMessageKey) ?? null
     if (
       !message ||
       !isIncidentStreamSystemMessage(message) ||
@@ -4493,7 +4498,7 @@ export function ConflictMap({
       isLive: false,
       message,
     } satisfies AlertIncidentDockItem
-  }, [focusedSystemMessageId, systemMessages])
+  }, [focusedSystemMessageKey, systemMessages])
   const dockFocusedItem = selectedSystemDockItem ?? selectedGroupedAlertDockItem ?? focusedLiveIncidentItem
   const showFocusedIncidentDock = dockFocusedItem !== null
 
@@ -4522,7 +4527,7 @@ export function ConflictMap({
     }
 
     if (item.kind === 'alert') {
-      setFocusedSystemMessageId(null)
+      setFocusedSystemMessageKey(null)
       setSelectedAlertId(item.alert.id)
       const firstCity = item.alert.citiesDetail?.find(
         (city) => hasUsableAlertCoordinate(city.lat, city.lon),
@@ -4544,7 +4549,7 @@ export function ConflictMap({
     }
 
     setSelectedAlertId(null)
-    setFocusedSystemMessageId(item.message.id)
+    setFocusedSystemMessageKey(getSystemMessageStreamKey(item.message))
     const firstCity = item.message.citiesEnriched?.find(
       (city) => city.lat != null && city.lng != null,
     )
@@ -4559,14 +4564,14 @@ export function ConflictMap({
     focusIncidentStreamItem,
     resolvedIncidentStreamItems,
     setFocusCoordinate,
-    setFocusedSystemMessageId,
+    setFocusedSystemMessageKey,
     setSelectedAlertId,
   ])
   const dismissFocusedIncidentPanel = useCallback(() => {
     clearIncidentStream()
     setSelectedAlertId(null)
-    setFocusedSystemMessageId(null)
-  }, [clearIncidentStream, setFocusedSystemMessageId, setSelectedAlertId])
+    setFocusedSystemMessageKey(null)
+  }, [clearIncidentStream, setFocusedSystemMessageKey, setSelectedAlertId])
 
   return (
     <div

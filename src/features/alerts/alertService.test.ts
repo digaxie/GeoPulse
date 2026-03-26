@@ -460,7 +460,7 @@ describe('alertService', () => {
     setDocumentHidden(false)
     document.dispatchEvent(new Event('visibilitychange'))
     await vi.runAllTicks()
-    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(300)
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(FakeEventSource.instances.length).toBeGreaterThanOrEqual(2)

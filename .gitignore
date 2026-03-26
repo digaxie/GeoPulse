@@ -37,7 +37,7 @@ GeoPulse-Proje-Bilgileri.txt
 .vercel
 
 # Codex temp directories
-.codex-tmp-*/
+.codex-*/
 
 # Supabase local temp
 supabase/.temp/

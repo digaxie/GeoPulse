@@ -150,6 +150,15 @@ export interface TzevaadomEventRow {
   received_at: string
 }
 
+export interface TzevaadomHistoryResult {
+  alerts: TzevaadomAlert[]
+  systemMessages: TzevaadomSystemMessage[]
+  truncated: boolean
+}
+
+const HISTORY_FETCH_BATCH_SIZE = 200
+const HISTORY_FETCH_MAX_RECORDS = 1000
+
 /**
  * Supabase'den son N saatteki Tzeva Adom eventlerini çeker.
  * Supabase client dışarıdan verilir (import döngüsünden kaçınmak için).
@@ -158,24 +167,44 @@ export async function fetchTzevaadomHistory(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabaseClient: any,
   hoursBack = 1,
-): Promise<{ alerts: TzevaadomAlert[]; systemMessages: TzevaadomSystemMessage[] }> {
-  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+): Promise<TzevaadomHistoryResult> {
+  const sinceDate = new Date(Date.now() - hoursBack * 60 * 60 * 1000)
+  const sinceIso = sinceDate.toISOString()
+  const collectedRows: TzevaadomEventRow[] = []
+  let offset = 0
 
-  const { data, error } = await supabaseClient
-    .from('tzevaadom_events')
-    .select('id,event_type,payload,received_at')
-    .gte('received_at', since)
-    .order('received_at', { ascending: false })
-    .limit(200)
+  while (offset < HISTORY_FETCH_MAX_RECORDS) {
+    const { data, error } = await supabaseClient
+      .from('tzevaadom_events')
+      .select('id,event_type,payload,received_at')
+      .gte('received_at', sinceIso)
+      .order('received_at', { ascending: false })
+      .range(offset, offset + HISTORY_FETCH_BATCH_SIZE - 1)
 
-  if (error || !data) {
-    return { alerts: [], systemMessages: [] }
+    if (error || !data) {
+      return { alerts: [], systemMessages: [], truncated: false }
+    }
+
+    const batch = data as TzevaadomEventRow[]
+    collectedRows.push(...batch)
+
+    if (
+      batch.length < HISTORY_FETCH_BATCH_SIZE ||
+      batch.some((row) => new Date(row.received_at).getTime() < sinceDate.getTime())
+    ) {
+      break
+    }
+
+    offset += HISTORY_FETCH_BATCH_SIZE
   }
 
   const alerts: TzevaadomAlert[] = []
   const systemMessages: TzevaadomSystemMessage[] = []
+  const filteredRows = collectedRows
+    .filter((row) => new Date(row.received_at).getTime() >= sinceDate.getTime())
+    .slice(0, HISTORY_FETCH_MAX_RECORDS)
 
-  for (const row of data as TzevaadomEventRow[]) {
+  for (const row of filteredRows) {
     const d = row.payload
     const receivedAtMs = new Date(row.received_at).getTime()
 
@@ -207,7 +236,11 @@ export async function fetchTzevaadomHistory(
     }
   }
 
-  return { alerts, systemMessages }
+  return {
+    alerts,
+    systemMessages,
+    truncated: filteredRows.length >= HISTORY_FETCH_MAX_RECORDS,
+  }
 }
 
 // ---------- Service ----------

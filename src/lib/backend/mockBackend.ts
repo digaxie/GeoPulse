@@ -46,8 +46,24 @@ type MockSnapshotRecord = ScenarioSnapshotRecord & {
   document: ScenarioDetailRecord['document']
 }
 
+type MockSeedCredentials = {
+  username: string
+  password: string
+}
+
 function nowIso() {
   return new Date().toISOString()
+}
+
+function resolveMockBackendSeedCredentials(): MockSeedCredentials {
+  return {
+    username: appEnv.demoUsername || 'admin',
+    password: appEnv.demoPassword || 'demo123',
+  }
+}
+
+export function getMockBackendSeedCredentials(): MockSeedCredentials {
+  return resolveMockBackendSeedCredentials()
 }
 
 function isLockActive(lock: ScenarioLock | null) {
@@ -97,8 +113,7 @@ function createSeedScenario(): ScenarioDetailRecord {
 }
 
 function createSeedAdminUser(): MockUserRecord {
-  const username = appEnv.demoUsername || 'admin'
-  const password = appEnv.demoPassword || 'demo123'
+  const { username, password } = resolveMockBackendSeedCredentials()
   const createdAt = new Date(0).toISOString()
 
   return {

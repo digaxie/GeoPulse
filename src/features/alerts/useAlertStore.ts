@@ -21,6 +21,7 @@ const MAX_INCIDENT_STREAM_ITEMS = 100
 type AlertStore = {
   alerts: RocketAlert[]
   historyAlerts: RocketAlert[]
+  historyTruncated: boolean
   feedStatus: AlertFeedStatus
   feedTransport: AlertFeedTransport
   lastFetchedAt: number | null
@@ -29,13 +30,14 @@ type AlertStore = {
   retentionMs: number
   tzevaadomStatus: TzevaadomConnectionStatus
   systemMessages: TzevaadomSystemMessage[]
-  focusedSystemMessageId: number | null
+  focusedSystemMessageKey: string | null
   incidentStreamItems: AlertIncidentStreamItem[]
   focusedIncidentStreamKey: string | null
   alertsPanelRevealNonce: number
   focusCoordinate: { lat: number; lon: number; name: string } | null
   setAlerts: (alerts: RocketAlert[], fetchedAt?: number | null) => void
   setHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
+  setHistoryTruncated: (truncated: boolean) => void
   mergeHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
   pruneHistoryAlerts: (now?: number) => void
   setFeedStatus: (status: AlertFeedStatus) => void
@@ -55,7 +57,7 @@ type AlertStore = {
   clearIncidentStream: () => void
   pruneIncidentStream: (now?: number) => void
   requestRevealAlertsPanel: () => void
-  setFocusedSystemMessageId: (id: number | null) => void
+  setFocusedSystemMessageKey: (key: string | null) => void
   setFocusCoordinate: (coord: { lat: number; lon: number; name: string } | null) => void
   focusTrigger: number
 }
@@ -259,6 +261,7 @@ function normalizeIncidentStream(
 export const useAlertStore = create<AlertStore>((set) => ({
   alerts: [],
   historyAlerts: [],
+  historyTruncated: false,
   feedStatus: 'disconnected',
   feedTransport: 'none',
   lastFetchedAt: null,
@@ -267,7 +270,7 @@ export const useAlertStore = create<AlertStore>((set) => ({
   retentionMs: DEFAULT_ALERT_RETENTION_MS,
   tzevaadomStatus: 'disconnected',
   systemMessages: [],
-  focusedSystemMessageId: null,
+  focusedSystemMessageKey: null,
   incidentStreamItems: [],
   focusedIncidentStreamKey: null,
   alertsPanelRevealNonce: 0,
@@ -352,6 +355,10 @@ export const useAlertStore = create<AlertStore>((set) => ({
         focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
+  },
+
+  setHistoryTruncated(historyTruncated) {
+    set((current) => (current.historyTruncated === historyTruncated ? current : { historyTruncated }))
   },
 
   mergeHistoryAlerts(alerts, now = Date.now()) {
@@ -539,6 +546,7 @@ export const useAlertStore = create<AlertStore>((set) => ({
     set({
       alerts: [],
       historyAlerts: [],
+      historyTruncated: false,
       feedTransport: 'none',
       lastFetchedAt: null,
       selectedAlertId: null,
@@ -606,7 +614,7 @@ export const useAlertStore = create<AlertStore>((set) => ({
 
       return {
         systemMessages: [],
-        focusedSystemMessageId: null,
+        focusedSystemMessageKey: null,
         incidentStreamItems: nextStream.items,
         focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
@@ -724,13 +732,13 @@ export const useAlertStore = create<AlertStore>((set) => ({
     }))
   },
 
-  setFocusedSystemMessageId(id) {
+  setFocusedSystemMessageKey(key) {
     set((current) =>
-      current.focusedSystemMessageId === id
+      current.focusedSystemMessageKey === key
         ? current
         : {
-            focusedSystemMessageId: id,
-            selectedAlertId: id === null ? current.selectedAlertId : null,
+            focusedSystemMessageKey: key,
+            selectedAlertId: key === null ? current.selectedAlertId : null,
           },
     )
   },
