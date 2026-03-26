@@ -40,6 +40,11 @@ type AlertDrawerProps = {
 
 type DrawerCity = { name: string; lat: number | null; lon: number | null }
 type DrawerCityGroup = { zone: string; cities: DrawerCity[] }
+const CITY_PREVIEW_LIMIT = 5
+
+function getPreviewCities(groups: DrawerCityGroup[]) {
+  return groups.flatMap((group) => group.cities)
+}
 
 function groupSystemCitiesByZone(cities: EnrichedCity[] | undefined): DrawerCityGroup[] {
   if (!cities || cities.length === 0) {
@@ -139,6 +144,112 @@ function getDateText(timestampMs: number) {
   }).format(timestampMs)
 }
 
+function DrawerCityPreview({
+  color,
+  groups,
+  itemKey,
+  onFocusCity,
+}: {
+  color: 'red' | 'green' | 'orange' | 'blue'
+  groups: DrawerCityGroup[]
+  itemKey: string
+  onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
+}) {
+  const cities = getPreviewCities(groups)
+  const visibleCities = cities.slice(0, CITY_PREVIEW_LIMIT)
+  const hiddenCount = cities.length - visibleCities.length
+
+  if (visibleCities.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="alerts-city-chips alert-drawer-city-preview">
+      {visibleCities.map((city, index) => {
+        const hasCoord = isCityFocusable(city)
+        return (
+          <button
+            key={`${itemKey}-preview-${city.name}-${index}`}
+            className={`alerts-city-chip alerts-city-chip-${color}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (!hasCoord) {
+                return
+              }
+
+              onFocusCity({
+                lat: city.lat!,
+                lon: city.lon!,
+                name: city.name,
+              })
+            }}
+            style={hasCoord ? undefined : { cursor: 'default', opacity: 0.55 }}
+            type="button"
+          >
+            {city.name}
+          </button>
+        )
+      })}
+      {hiddenCount > 0 ? (
+        <span className="alerts-city-chip alerts-city-chip-more">+{hiddenCount} daha</span>
+      ) : null}
+    </div>
+  )
+}
+
+function DrawerExpandedGroups({
+  color,
+  groups,
+  itemKey,
+  onFocusCity,
+}: {
+  color: 'red' | 'green' | 'orange' | 'blue'
+  groups: DrawerCityGroup[]
+  itemKey: string
+  onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
+}) {
+  if (groups.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="alert-drawer-item-expanded">
+      {groups.map((group) => (
+        <section className="alert-drawer-item-group" key={`${itemKey}-${group.zone}`}>
+          <h4>{group.zone}</h4>
+          <div className="alerts-city-chips alert-drawer-city-groups">
+            {group.cities.map((city, index) => {
+              const hasCoord = isCityFocusable(city)
+              return (
+                <button
+                  key={`${itemKey}-${group.zone}-${city.name}-${index}`}
+                  className={`alerts-city-chip alerts-city-chip-${color}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (!hasCoord) {
+                      return
+                    }
+
+                    onFocusCity({
+                      lat: city.lat!,
+                      lon: city.lon!,
+                      name: city.name,
+                    })
+                  }}
+                  style={hasCoord ? undefined : { cursor: 'default', opacity: 0.55 }}
+                  type="button"
+                >
+                  {city.name}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export function AlertDrawer({
   collapsed,
   enabled,
@@ -224,77 +335,47 @@ export function AlertDrawer({
             const groups = getCardGroups(item)
 
             return (
-              <article
-                className={`alert-drawer-card alert-drawer-card-${color}${isSelected ? ' alert-drawer-card-selected' : ''}${item.isLive ? ' alert-drawer-card-live' : ''}`}
-                key={item.key}
-              >
-                <div
-                  className="alert-drawer-card-button"
+              <div className="alerts-card-wrapper alert-drawer-item" key={item.key}>
+                <button
+                  aria-expanded={isSelected}
+                  aria-label={`Alarm olayi: ${getCardTitle(item)}`}
+                  className={`alerts-card alerts-card-${color} alert-drawer-timeline-card${isSelected ? ' alerts-card-active alert-drawer-timeline-card-active' : ''}${item.isLive ? ' alerts-card-live' : ''}`}
                   onClick={() => {
                     setLocalSelectedKey(item.key)
                     onSelectItem(item.key)
                   }}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') {
-                      return
-                    }
-
-                    event.preventDefault()
-                    setLocalSelectedKey(item.key)
-                    onSelectItem(item.key)
-                  }}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
                 >
-                  <div className="alert-drawer-card-main">
-                    <strong className="alert-drawer-card-title">{getCardTitle(item)}</strong>
-                    <span className="alert-drawer-card-time">
+                  <div className="alerts-card-body">
+                    <strong className="alerts-card-title">{getCardTitle(item)}</strong>
+                    <span className="alerts-card-time">
                       {formatTimelineDualTime(item.timestampMs, now)}
                     </span>
-                    <span className="alert-drawer-card-body">{getCardBody(item)}</span>
+                    <span className="alerts-card-area">{getCardBody(item)}</span>
                   </div>
-                  <span className="alert-drawer-card-icon" aria-hidden="true">
+                  <span className="alerts-card-icon" aria-hidden="true">
                     {icon}
                   </span>
-                </div>
+                </button>
+
+                {!isSelected ? (
+                  <DrawerCityPreview
+                    color={color}
+                    groups={groups}
+                    itemKey={item.key}
+                    onFocusCity={onFocusCity}
+                  />
+                ) : null}
 
                 {isSelected ? (
-                  <div className="alert-drawer-card-expanded">
-                    {groups.map((group) => (
-                      <section className="alert-drawer-card-group" key={`${item.key}-${group.zone}`}>
-                        <h4>{group.zone}</h4>
-                        <div className="alert-drawer-card-chips">
-                          {group.cities.map((city, index) => {
-                            const focusable = isCityFocusable(city)
-                            return (
-                              <button
-                                key={`${item.key}-${group.zone}-${city.name}-${index}`}
-                                className={`alert-drawer-card-chip alert-drawer-card-chip-${color}`}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  if (!focusable) {
-                                    return
-                                  }
-
-                                  onFocusCity({
-                                    lat: city.lat!,
-                                    lon: city.lon!,
-                                    name: city.name,
-                                  })
-                                }}
-                                style={focusable ? undefined : { cursor: 'default', opacity: 0.55 }}
-                                type="button"
-                              >
-                                {city.name}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </section>
-                    ))}
-                  </div>
+                  <DrawerExpandedGroups
+                    color={color}
+                    groups={groups}
+                    itemKey={item.key}
+                    onFocusCity={onFocusCity}
+                  />
                 ) : null}
-              </article>
+              </div>
             )
           })}
         </div>

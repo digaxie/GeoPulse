@@ -4172,6 +4172,81 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   padding-right: 0.15rem;
 }
 
+.alert-drawer-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.alert-drawer .alerts-card {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.alert-drawer .alerts-card:hover {
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.24);
+}
+
+.alert-drawer .alerts-card-active,
+.alert-drawer-timeline-card-active {
+  border-color: rgba(248, 250, 252, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.26);
+}
+
+.alert-drawer .alerts-card-live {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.alert-drawer .alerts-card-title {
+  color: #f8fafc;
+}
+
+.alert-drawer .alerts-card-time {
+  color: rgba(248, 250, 252, 0.76);
+}
+
+.alert-drawer .alerts-card-area {
+  color: rgba(248, 250, 252, 0.88);
+}
+
+.alert-drawer .alerts-card-icon {
+  color: #f8fafc;
+}
+
+.alert-drawer-city-preview,
+.alert-drawer-city-groups {
+  padding-top: 0;
+}
+
+.alert-drawer .alerts-city-chip-more {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(248, 250, 252, 0.85);
+}
+
+.alert-drawer-item-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 0.25rem 0.2rem;
+}
+
+.alert-drawer-item-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.alert-drawer-item-group h4 {
+  margin: 0;
+  padding: 0 0.75rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: rgba(248, 250, 252, 0.9);
+}
+
 .alert-drawer-card {
   position: relative;
   overflow: hidden;

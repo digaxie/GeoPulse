@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -100,7 +100,7 @@ describe('AlertDrawer', () => {
     expect(screen.getAllByText('Confrontation Line').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Even Menachem' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Shtula' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Malkia' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Malkia' }).length).toBeGreaterThan(0)
   })
 
   it('selects another card when clicked and supports collapsed handle', async () => {
@@ -121,9 +121,9 @@ describe('AlertDrawer', () => {
       />,
     )
 
-    const cardButtons = container.querySelectorAll('.alert-drawer-card-button')
+    const cardButtons = container.querySelectorAll('.alert-drawer-timeline-card')
     expect(cardButtons[1]).toBeTruthy()
-    fireEvent.click(cardButtons[1]!)
+    await user.click(cardButtons[1] as HTMLElement)
     expect(onSelectItem).toHaveBeenCalledWith(`alert:${singleCityAlert.id}`)
 
     rerender(
@@ -140,7 +140,7 @@ describe('AlertDrawer', () => {
     )
 
     expect(screen.getByText('Son 24 Saat (kismi)')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Malkia' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Malkia' }).length).toBeGreaterThan(0)
 
     rerender(
       <AlertDrawer
