@@ -6,16 +6,17 @@ import {
   DEFAULT_ALERT_RETENTION_MS,
   MAX_ALERT_RETENTION_MS,
   MIN_ALERT_RETENTION_MS,
-  type AlertIncidentQueueItem,
+  getSystemMessageStreamKey,
   type AlertFeedStatus,
   type AlertFeedTransport,
+  type AlertIncidentStreamItem,
   type RocketAlert,
 } from '@/features/alerts/types'
 import type { TzevaadomConnectionStatus, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 
 const MAX_SYSTEM_MESSAGES = 200
-const SYSTEM_MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000 // 24 hours
-const MAX_PENDING_INCIDENT_QUEUE_ITEMS = 100
+const SYSTEM_MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000
+const MAX_INCIDENT_STREAM_ITEMS = 100
 
 type AlertStore = {
   alerts: RocketAlert[]
@@ -29,9 +30,8 @@ type AlertStore = {
   tzevaadomStatus: TzevaadomConnectionStatus
   systemMessages: TzevaadomSystemMessage[]
   focusedSystemMessageId: number | null
-  focusedIncidentAlertId: string | null
-  focusedIncidentPinnedAtMs: number | null
-  pendingIncidentQueue: AlertIncidentQueueItem[]
+  incidentStreamItems: AlertIncidentStreamItem[]
+  focusedIncidentStreamKey: string | null
   alertsPanelRevealNonce: number
   focusCoordinate: { lat: number; lon: number; name: string } | null
   setAlerts: (alerts: RocketAlert[], fetchedAt?: number | null) => void
@@ -49,10 +49,11 @@ type AlertStore = {
   addSystemMessage: (message: TzevaadomSystemMessage) => void
   dismissSystemMessage: (id: number) => void
   clearSystemMessages: () => void
-  focusIncident: (alertId: string, pinnedAtMs?: number) => void
-  enqueuePendingIncident: (alertId: string, receivedAtMs: number) => void
-  promotePendingIncident: (alertId: string) => void
-  clearFocusedIncident: () => void
+  appendIncidentStreamAlert: (alertId: string, receivedAtMs: number) => void
+  appendIncidentStreamSystem: (systemMessageKey: string, receivedAtMs: number) => void
+  focusIncidentStreamItem: (key: string) => void
+  clearIncidentStream: () => void
+  pruneIncidentStream: (now?: number) => void
   requestRevealAlertsPanel: () => void
   setFocusedSystemMessageId: (id: number | null) => void
   setFocusCoordinate: (coord: { lat: number; lon: number; name: string } | null) => void
@@ -97,9 +98,9 @@ function areAlertsEqual(left: RocketAlert[], right: RocketAlert[]) {
   return true
 }
 
-function arePendingIncidentQueueItemsEqual(
-  left: AlertIncidentQueueItem[],
-  right: AlertIncidentQueueItem[],
+function areIncidentStreamItemsEqual(
+  left: AlertIncidentStreamItem[],
+  right: AlertIncidentStreamItem[],
 ) {
   if (left === right) {
     return true
@@ -115,8 +116,21 @@ function arePendingIncidentQueueItemsEqual(
     if (
       !leftItem ||
       !rightItem ||
-      leftItem.alertId !== rightItem.alertId ||
-      leftItem.receivedAtMs !== rightItem.receivedAtMs
+      leftItem.key !== rightItem.key ||
+      leftItem.kind !== rightItem.kind ||
+      leftItem.receivedAtMs !== rightItem.receivedAtMs ||
+      leftItem.expiresAtMs !== rightItem.expiresAtMs
+    ) {
+      return false
+    }
+
+    if (leftItem.kind === 'alert' && leftItem.alertId !== (rightItem.kind === 'alert' ? rightItem.alertId : null)) {
+      return false
+    }
+
+    if (
+      leftItem.kind === 'system' &&
+      leftItem.systemMessageKey !== (rightItem.kind === 'system' ? rightItem.systemMessageKey : null)
     ) {
       return false
     }
@@ -140,54 +154,6 @@ function resolveSelectedAlertId(
     : null
 }
 
-function resolveFocusedIncidentAlertId(
-  focusedIncidentAlertId: string | null,
-  alerts: RocketAlert[],
-  historyAlerts: RocketAlert[],
-) {
-  if (!focusedIncidentAlertId) {
-    return null
-  }
-
-  return alerts.some((alert) => alert.id === focusedIncidentAlertId) ||
-    historyAlerts.some((alert) => alert.id === focusedIncidentAlertId)
-    ? focusedIncidentAlertId
-    : null
-}
-
-function normalizePendingIncidentQueue(
-  queue: AlertIncidentQueueItem[],
-  alerts: RocketAlert[],
-  historyAlerts: RocketAlert[],
-  focusedIncidentAlertId: string | null,
-) {
-  const availableIds = new Set<string>([
-    ...alerts.map((alert) => alert.id),
-    ...historyAlerts.map((alert) => alert.id),
-  ])
-  const seenIds = new Set<string>()
-  const nextQueue: AlertIncidentQueueItem[] = []
-
-  for (const item of queue) {
-    if (
-      item.alertId === focusedIncidentAlertId ||
-      !availableIds.has(item.alertId) ||
-      seenIds.has(item.alertId)
-    ) {
-      continue
-    }
-
-    seenIds.add(item.alertId)
-    nextQueue.push(item)
-
-    if (nextQueue.length >= MAX_PENDING_INCIDENT_QUEUE_ITEMS) {
-      break
-    }
-  }
-
-  return nextQueue
-}
-
 function normalizeHistoryAlerts(alerts: RocketAlert[], now = Date.now()) {
   const merged = new Map<string, RocketAlert>()
 
@@ -202,7 +168,12 @@ function normalizeHistoryAlerts(alerts: RocketAlert[], now = Date.now()) {
   return sortAlertsByNewest(Array.from(merged.values())).slice(0, ALERT_HISTORY_LIMIT)
 }
 
-function normalizeActiveAlerts(alerts: RocketAlert[], retentionMs: number, dismissedBeforeMs: number | null, now = Date.now()) {
+function normalizeActiveAlerts(
+  alerts: RocketAlert[],
+  retentionMs: number,
+  dismissedBeforeMs: number | null,
+  now = Date.now(),
+) {
   const visibleAlerts = alerts.filter((alert) => {
     if (alert.occurredAtMs > now) {
       return false
@@ -222,6 +193,69 @@ function normalizeActiveAlerts(alerts: RocketAlert[], retentionMs: number, dismi
   return sortAlertsByNewest(visibleAlerts)
 }
 
+function retimeIncidentStream(items: AlertIncidentStreamItem[], retentionMs: number) {
+  return items.map((item) => ({
+    ...item,
+    expiresAtMs: item.receivedAtMs + retentionMs,
+  }))
+}
+
+function normalizeIncidentStream(
+  items: AlertIncidentStreamItem[],
+  alerts: RocketAlert[],
+  historyAlerts: RocketAlert[],
+  systemMessages: TzevaadomSystemMessage[],
+  focusedIncidentStreamKey: string | null,
+  now = Date.now(),
+) {
+  const availableAlertIds = new Set<string>([
+    ...alerts.map((alert) => alert.id),
+    ...historyAlerts.map((alert) => alert.id),
+  ])
+  const availableSystemMessageKeys = new Set<string>(
+    systemMessages.map((message) => getSystemMessageStreamKey(message)),
+  )
+  const seenKeys = new Set<string>()
+  const nextItems = [...items]
+    .sort((left, right) => {
+      if (right.receivedAtMs !== left.receivedAtMs) {
+        return right.receivedAtMs - left.receivedAtMs
+      }
+
+      return right.key.localeCompare(left.key, 'en')
+    })
+    .filter((item) => {
+      if (item.expiresAtMs <= now) {
+        return false
+      }
+
+      if (seenKeys.has(item.key)) {
+        return false
+      }
+
+      if (item.kind === 'alert' && !availableAlertIds.has(item.alertId)) {
+        return false
+      }
+
+      if (item.kind === 'system' && !availableSystemMessageKeys.has(item.systemMessageKey)) {
+        return false
+      }
+
+      seenKeys.add(item.key)
+      return true
+    })
+    .slice(0, MAX_INCIDENT_STREAM_ITEMS)
+
+  const nextFocusedIncidentStreamKey = nextItems.some((item) => item.key === focusedIncidentStreamKey)
+    ? focusedIncidentStreamKey
+    : (nextItems[0]?.key ?? null)
+
+  return {
+    items: nextItems,
+    focusedIncidentStreamKey: nextFocusedIncidentStreamKey,
+  }
+}
+
 export const useAlertStore = create<AlertStore>((set) => ({
   alerts: [],
   historyAlerts: [],
@@ -234,36 +268,33 @@ export const useAlertStore = create<AlertStore>((set) => ({
   tzevaadomStatus: 'disconnected',
   systemMessages: [],
   focusedSystemMessageId: null,
-  focusedIncidentAlertId: null,
-  focusedIncidentPinnedAtMs: null,
-  pendingIncidentQueue: [],
+  incidentStreamItems: [],
+  focusedIncidentStreamKey: null,
   alertsPanelRevealNonce: 0,
   focusCoordinate: null,
   focusTrigger: 0,
 
   setAlerts(alerts, fetchedAt = null) {
     set((current) => {
+      const now = fetchedAt ?? Date.now()
       const visibleAlerts = normalizeActiveAlerts(
         alerts,
         current.retentionMs,
         current.dismissedBeforeMs,
-        fetchedAt ?? Date.now(),
+        now,
       )
       const nextSelectedAlertId = resolveSelectedAlertId(
         current.selectedAlertId,
         visibleAlerts,
         current.historyAlerts,
       )
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
         visibleAlerts,
         current.historyAlerts,
-      )
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        current.pendingIncidentQueue,
-        visibleAlerts,
-        current.historyAlerts,
-        nextFocusedIncidentAlertId,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
       )
       const nextLastFetchedAt = fetchedAt ?? current.lastFetchedAt
       const sameAlerts = areAlertsEqual(current.alerts, visibleAlerts)
@@ -272,8 +303,8 @@ export const useAlertStore = create<AlertStore>((set) => ({
         sameAlerts &&
         current.lastFetchedAt === nextLastFetchedAt &&
         current.selectedAlertId === nextSelectedAlertId &&
-        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
-        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey &&
+        areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items)
       ) {
         return current
       }
@@ -282,14 +313,8 @@ export const useAlertStore = create<AlertStore>((set) => ({
         alerts: sameAlerts ? current.alerts : visibleAlerts,
         lastFetchedAt: nextLastFetchedAt,
         selectedAlertId: nextSelectedAlertId,
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        focusedIncidentPinnedAtMs:
-          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
-            ? current.focusedIncidentPinnedAtMs
-            : nextFocusedIncidentAlertId
-              ? current.focusedIncidentPinnedAtMs
-              : null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
   },
@@ -302,23 +327,20 @@ export const useAlertStore = create<AlertStore>((set) => ({
         current.alerts,
         nextHistoryAlerts,
       )
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
         current.alerts,
         nextHistoryAlerts,
-      )
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        current.pendingIncidentQueue,
-        current.alerts,
-        nextHistoryAlerts,
-        nextFocusedIncidentAlertId,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
       )
 
       if (
         areAlertsEqual(current.historyAlerts, nextHistoryAlerts) &&
         current.selectedAlertId === nextSelectedAlertId &&
-        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
-        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey &&
+        areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items)
       ) {
         return current
       }
@@ -326,14 +348,8 @@ export const useAlertStore = create<AlertStore>((set) => ({
       return {
         historyAlerts: nextHistoryAlerts,
         selectedAlertId: nextSelectedAlertId,
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        focusedIncidentPinnedAtMs:
-          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
-            ? current.focusedIncidentPinnedAtMs
-            : nextFocusedIncidentAlertId
-              ? current.focusedIncidentPinnedAtMs
-              : null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
   },
@@ -341,36 +357,27 @@ export const useAlertStore = create<AlertStore>((set) => ({
   mergeHistoryAlerts(alerts, now = Date.now()) {
     set((current) => {
       const nextHistoryAlerts = normalizeHistoryAlerts([...current.historyAlerts, ...alerts], now)
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
         current.alerts,
         nextHistoryAlerts,
-      )
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        current.pendingIncidentQueue,
-        current.alerts,
-        nextHistoryAlerts,
-        nextFocusedIncidentAlertId,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
       )
 
       if (
         areAlertsEqual(current.historyAlerts, nextHistoryAlerts) &&
-        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
-        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey &&
+        areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items)
       ) {
         return current
       }
 
       return {
         historyAlerts: nextHistoryAlerts,
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        focusedIncidentPinnedAtMs:
-          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
-            ? current.focusedIncidentPinnedAtMs
-            : nextFocusedIncidentAlertId
-              ? current.focusedIncidentPinnedAtMs
-              : null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
   },
@@ -383,23 +390,20 @@ export const useAlertStore = create<AlertStore>((set) => ({
         current.alerts,
         nextHistoryAlerts,
       )
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
         current.alerts,
         nextHistoryAlerts,
-      )
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        current.pendingIncidentQueue,
-        current.alerts,
-        nextHistoryAlerts,
-        nextFocusedIncidentAlertId,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
       )
 
       if (
         areAlertsEqual(current.historyAlerts, nextHistoryAlerts) &&
         current.selectedAlertId === nextSelectedAlertId &&
-        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
-        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey &&
+        areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items)
       ) {
         return current
       }
@@ -407,14 +411,8 @@ export const useAlertStore = create<AlertStore>((set) => ({
       return {
         historyAlerts: nextHistoryAlerts,
         selectedAlertId: nextSelectedAlertId,
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        focusedIncidentPinnedAtMs:
-          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
-            ? current.focusedIncidentPinnedAtMs
-            : nextFocusedIncidentAlertId
-              ? current.focusedIncidentPinnedAtMs
-              : null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
   },
@@ -452,27 +450,21 @@ export const useAlertStore = create<AlertStore>((set) => ({
         nextAlerts,
         current.historyAlerts,
       )
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextStream = normalizeIncidentStream(
+        retimeIncidentStream(current.incidentStreamItems, nextRetentionMs),
         nextAlerts,
         current.historyAlerts,
-      )
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        current.pendingIncidentQueue,
-        nextAlerts,
-        current.historyAlerts,
-        nextFocusedIncidentAlertId,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
       )
 
       return {
         retentionMs: nextRetentionMs,
         alerts: nextAlerts,
         selectedAlertId: nextSelectedAlertId,
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        focusedIncidentPinnedAtMs: nextFocusedIncidentAlertId
-          ? current.focusedIncidentPinnedAtMs
-          : null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
   },
@@ -490,23 +482,20 @@ export const useAlertStore = create<AlertStore>((set) => ({
         nextAlerts,
         current.historyAlerts,
       )
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
         nextAlerts,
         current.historyAlerts,
-      )
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        current.pendingIncidentQueue,
-        nextAlerts,
-        current.historyAlerts,
-        nextFocusedIncidentAlertId,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
       )
 
       if (
         areAlertsEqual(current.alerts, nextAlerts) &&
         current.selectedAlertId === nextSelectedAlertId &&
-        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
-        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey &&
+        areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items)
       ) {
         return current
       }
@@ -514,39 +503,33 @@ export const useAlertStore = create<AlertStore>((set) => ({
       return {
         alerts: nextAlerts,
         selectedAlertId: nextSelectedAlertId,
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        focusedIncidentPinnedAtMs:
-          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
-            ? current.focusedIncidentPinnedAtMs
-            : nextFocusedIncidentAlertId
-              ? current.focusedIncidentPinnedAtMs
-              : null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
       }
     })
   },
 
   dismissCurrentAlerts(cutoffMs = Date.now()) {
     set((current) => {
-      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
-        current.focusedIncidentAlertId,
+      const nextSelectedAlertId = resolveSelectedAlertId(
+        current.selectedAlertId,
         [],
         current.historyAlerts,
+      )
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
+        [],
+        current.historyAlerts,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        cutoffMs,
       )
 
       return {
         alerts: [],
-        selectedAlertId: resolveSelectedAlertId(current.selectedAlertId, [], current.historyAlerts),
-        focusedIncidentAlertId: nextFocusedIncidentAlertId,
-        focusedIncidentPinnedAtMs: nextFocusedIncidentAlertId
-          ? current.focusedIncidentPinnedAtMs
-          : null,
-        pendingIncidentQueue: normalizePendingIncidentQueue(
-          current.pendingIncidentQueue,
-          [],
-          current.historyAlerts,
-          nextFocusedIncidentAlertId,
-        ),
+        selectedAlertId: nextSelectedAlertId,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
         dismissedBeforeMs: cutoffMs,
       }
     })
@@ -559,9 +542,8 @@ export const useAlertStore = create<AlertStore>((set) => ({
       feedTransport: 'none',
       lastFetchedAt: null,
       selectedAlertId: null,
-      focusedIncidentAlertId: null,
-      focusedIncidentPinnedAtMs: null,
-      pendingIncidentQueue: [],
+      incidentStreamItems: [],
+      focusedIncidentStreamKey: null,
       alertsPanelRevealNonce: 0,
       dismissedBeforeMs: null,
     })
@@ -574,112 +556,166 @@ export const useAlertStore = create<AlertStore>((set) => ({
   addSystemMessage(message) {
     set((current) => {
       const now = Date.now()
-      // Deduplicate by id+type
       const isDuplicate = current.systemMessages.some(
-        (m) => m.id === message.id && m.type === message.type,
+        (existing) => getSystemMessageStreamKey(existing) === getSystemMessageStreamKey(message),
       )
-      if (isDuplicate) return current
+      if (isDuplicate) {
+        return current
+      }
 
-      // Prune old messages
       const fresh = current.systemMessages.filter(
-        (m) => now - m.receivedAtMs < SYSTEM_MESSAGE_RETENTION_MS,
+        (existing) => now - existing.receivedAtMs < SYSTEM_MESSAGE_RETENTION_MS,
       )
       fresh.unshift(message)
 
-      return { systemMessages: fresh.slice(0, MAX_SYSTEM_MESSAGES) }
+      const nextSystemMessages = fresh.slice(0, MAX_SYSTEM_MESSAGES)
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
+        current.alerts,
+        current.historyAlerts,
+        nextSystemMessages,
+        current.focusedIncidentStreamKey,
+        now,
+      )
+
+      return {
+        systemMessages: nextSystemMessages,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
+      }
     })
   },
 
   dismissSystemMessage(id) {
     set((current) => ({
-      systemMessages: current.systemMessages.map((m) =>
-        m.id === id ? { ...m, dismissed: true } : m,
+      systemMessages: current.systemMessages.map((message) =>
+        message.id === id ? { ...message, dismissed: true } : message,
       ),
     }))
   },
 
   clearSystemMessages() {
-    set({ systemMessages: [], focusedSystemMessageId: null })
-  },
-
-  focusIncident(alertId, pinnedAtMs = Date.now()) {
     set((current) => {
-      const nextPendingIncidentQueue = current.pendingIncidentQueue.filter(
-        (item) => item.alertId !== alertId,
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
+        current.alerts,
+        current.historyAlerts,
+        [],
+        current.focusedIncidentStreamKey,
       )
 
+      return {
+        systemMessages: [],
+        focusedSystemMessageId: null,
+        incidentStreamItems: nextStream.items,
+        focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
+      }
+    })
+  },
+
+  appendIncidentStreamAlert(alertId, receivedAtMs) {
+    set((current) => {
+      const nextStream = normalizeIncidentStream(
+        [
+          {
+            key: `alert:${alertId}`,
+            kind: 'alert',
+            alertId,
+            receivedAtMs,
+            expiresAtMs: receivedAtMs + current.retentionMs,
+          },
+          ...current.incidentStreamItems,
+        ],
+        current.alerts,
+        current.historyAlerts,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+      )
+
+      return areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items) &&
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey
+        ? current
+        : {
+            incidentStreamItems: nextStream.items,
+            focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
+          }
+    })
+  },
+
+  appendIncidentStreamSystem(systemMessageKey, receivedAtMs) {
+    set((current) => {
+      const nextStream = normalizeIncidentStream(
+        [
+          {
+            key: `system:${systemMessageKey}`,
+            kind: 'system',
+            systemMessageKey,
+            receivedAtMs,
+            expiresAtMs: receivedAtMs + current.retentionMs,
+          },
+          ...current.incidentStreamItems,
+        ],
+        current.alerts,
+        current.historyAlerts,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+      )
+
+      return areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items) &&
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey
+        ? current
+        : {
+            incidentStreamItems: nextStream.items,
+            focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
+          }
+    })
+  },
+
+  focusIncidentStreamItem(key) {
+    set((current) => {
       if (
-        current.focusedIncidentAlertId === alertId &&
-        current.selectedAlertId === alertId &&
-        current.focusedSystemMessageId === null &&
-        current.focusedIncidentPinnedAtMs === pinnedAtMs &&
-        current.pendingIncidentQueue.length === nextPendingIncidentQueue.length
+        current.focusedIncidentStreamKey === key ||
+        !current.incidentStreamItems.some((item) => item.key === key)
       ) {
         return current
       }
 
       return {
-        focusedIncidentAlertId: alertId,
-        focusedIncidentPinnedAtMs: pinnedAtMs,
-        pendingIncidentQueue: nextPendingIncidentQueue,
-        selectedAlertId: alertId,
-        focusedSystemMessageId: null,
+        focusedIncidentStreamKey: key,
       }
     })
   },
 
-  enqueuePendingIncident(alertId, receivedAtMs) {
-    set((current) => {
-      if (current.focusedIncidentAlertId === alertId) {
-        return current
-      }
-
-      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
-        [{ alertId, receivedAtMs }, ...current.pendingIncidentQueue],
-        current.alerts,
-        current.historyAlerts,
-        current.focusedIncidentAlertId,
-      )
-
-      return nextPendingIncidentQueue.length === current.pendingIncidentQueue.length &&
-        nextPendingIncidentQueue.every((item, index) => {
-          const currentItem = current.pendingIncidentQueue[index]
-          return currentItem?.alertId === item.alertId && currentItem.receivedAtMs === item.receivedAtMs
-        })
-        ? current
-        : { pendingIncidentQueue: nextPendingIncidentQueue }
-    })
-  },
-
-  promotePendingIncident(alertId) {
-    set((current) => {
-      const queuedItem = current.pendingIncidentQueue.find((item) => item.alertId === alertId)
-      if (!queuedItem && current.focusedIncidentAlertId === alertId) {
-        return current
-      }
-
-      return {
-        focusedIncidentAlertId: alertId,
-        focusedIncidentPinnedAtMs: queuedItem?.receivedAtMs ?? Date.now(),
-        pendingIncidentQueue: current.pendingIncidentQueue.filter((item) => item.alertId !== alertId),
-        selectedAlertId: alertId,
-        focusedSystemMessageId: null,
-      }
-    })
-  },
-
-  clearFocusedIncident() {
+  clearIncidentStream() {
     set((current) =>
-      current.focusedIncidentAlertId === null &&
-      current.focusedIncidentPinnedAtMs === null &&
-      current.pendingIncidentQueue.length === 0
+      current.focusedIncidentStreamKey === null && current.incidentStreamItems.length === 0
         ? current
         : {
-            focusedIncidentAlertId: null,
-            focusedIncidentPinnedAtMs: null,
-            pendingIncidentQueue: [],
+            focusedIncidentStreamKey: null,
+            incidentStreamItems: [],
           },
     )
+  },
+
+  pruneIncidentStream(now = Date.now()) {
+    set((current) => {
+      const nextStream = normalizeIncidentStream(
+        current.incidentStreamItems,
+        current.alerts,
+        current.historyAlerts,
+        current.systemMessages,
+        current.focusedIncidentStreamKey,
+        now,
+      )
+
+      return areIncidentStreamItemsEqual(current.incidentStreamItems, nextStream.items) &&
+        current.focusedIncidentStreamKey === nextStream.focusedIncidentStreamKey
+        ? current
+        : {
+            incidentStreamItems: nextStream.items,
+            focusedIncidentStreamKey: nextStream.focusedIncidentStreamKey,
+          }
+    })
   },
 
   requestRevealAlertsPanel() {
@@ -689,7 +725,14 @@ export const useAlertStore = create<AlertStore>((set) => ({
   },
 
   setFocusedSystemMessageId(id) {
-    set((current) => (current.focusedSystemMessageId === id ? current : { focusedSystemMessageId: id, selectedAlertId: id === null ? current.selectedAlertId : null }))
+    set((current) =>
+      current.focusedSystemMessageId === id
+        ? current
+        : {
+            focusedSystemMessageId: id,
+            selectedAlertId: id === null ? current.selectedAlertId : null,
+          },
+    )
   },
 
   setFocusCoordinate(coord) {

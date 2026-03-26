@@ -47,10 +47,21 @@ export interface AlertCityGroup {
   cities: AlertCityDetail[]
 }
 
-export interface AlertIncidentQueueItem {
-  alertId: string
-  receivedAtMs: number
-}
+export type AlertIncidentStreamItem =
+  | {
+      key: string
+      kind: 'alert'
+      alertId: string
+      receivedAtMs: number
+      expiresAtMs: number
+    }
+  | {
+      key: string
+      kind: 'system'
+      systemMessageKey: string
+      receivedAtMs: number
+      expiresAtMs: number
+    }
 
 export interface RocketAlert {
   id: string
@@ -168,6 +179,18 @@ export function getAlertZoneCount(alert: Pick<RocketAlert, 'citiesDetail' | 'are
   return alert.areaNameEn ? 1 : 0
 }
 
+export function getSystemMessageStreamKey(
+  message: Pick<TzevaadomSystemMessage, 'id' | 'type' | 'receivedAtMs'>,
+) {
+  return `${message.id}:${message.type}:${message.receivedAtMs}`
+}
+
+export function isIncidentStreamSystemMessage(
+  message: Pick<TzevaadomSystemMessage, 'type'> | null | undefined,
+) {
+  return message?.type === 'incident_ended' || message?.type === 'early_warning'
+}
+
 export function getAlertAudioSettingsForRole(
   settings: ScenarioAlertSettings,
   role: AlertAudioRole,
@@ -188,6 +211,24 @@ export function getAlertAudioSettingsForRole(
 // ---------- Timeline ----------
 
 import type { TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
+
+export type AlertIncidentDockItem =
+  | {
+      key: string
+      kind: 'alert'
+      receivedAtMs: number
+      expiresAtMs: number | null
+      isLive: boolean
+      alert: RocketAlert
+    }
+  | {
+      key: string
+      kind: 'system'
+      receivedAtMs: number
+      expiresAtMs: number | null
+      isLive: boolean
+      message: TzevaadomSystemMessage
+    }
 
 export type TimelineItem =
   | { kind: 'alert'; alert: RocketAlert; timestampMs: number; isActive: boolean }

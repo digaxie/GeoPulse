@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_ALERT_RETENTION_MS, type RocketAlert } from '@/features/alerts/types'
+import {
+  DEFAULT_ALERT_RETENTION_MS,
+  getSystemMessageStreamKey,
+  type RocketAlert,
+} from '@/features/alerts/types'
+import type { TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 
 const sampleAlert: RocketAlert = {
   id: 'alert-1',
-  name: 'מלכיה',
+  name: 'Malkia',
   englishName: 'Malkia',
   lat: 33.0986,
   lon: 35.5096,
@@ -42,6 +47,28 @@ const groupedAlertTwo: RocketAlert = {
   ],
 }
 
+const incidentEndedMessage: TzevaadomSystemMessage = {
+  id: 15,
+  time: '12:05',
+  type: 'incident_ended',
+  titleEn: 'Home Front Command - Incident Ended',
+  titleHe: '',
+  bodyEn: 'The incident has ended.',
+  bodyHe: '',
+  bodyAr: '',
+  receivedAtMs: groupedAlertTwo.occurredAtMs + 10_000,
+  citiesEnriched: [
+    {
+      en: 'Bika',
+      he: '',
+      lat: 32.1,
+      lng: 35.4,
+      zone_en: 'Samaria',
+      countdown: 0,
+    },
+  ],
+}
+
 describe('useAlertStore', () => {
   beforeEach(() => {
     useAlertStore.setState({
@@ -55,11 +82,10 @@ describe('useAlertStore', () => {
       retentionMs: DEFAULT_ALERT_RETENTION_MS,
       tzevaadomStatus: 'disconnected',
       systemMessages: [],
-      focusedIncidentAlertId: null,
-      focusedIncidentPinnedAtMs: null,
-      pendingIncidentQueue: [],
-      alertsPanelRevealNonce: 0,
       focusedSystemMessageId: null,
+      incidentStreamItems: [],
+      focusedIncidentStreamKey: null,
+      alertsPanelRevealNonce: 0,
       focusCoordinate: null,
       focusTrigger: 0,
     })
@@ -170,36 +196,65 @@ describe('useAlertStore', () => {
     expect(useAlertStore.getState().historyAlerts.some((alert) => alert.id === 'expired-history')).toBe(false)
   })
 
-  it('focuses a grouped incident and queues later grouped incidents without duplicates', () => {
+  it('starts a live incident stream with the first grouped alert and appends newer grouped alerts without stealing focus', () => {
     const now = groupedAlertTwo.occurredAtMs + 1_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
     useAlertStore.getState().setAlerts([groupedAlert, groupedAlertTwo], now)
     useAlertStore.getState().setHistoryAlerts([groupedAlert, groupedAlertTwo], now)
 
-    useAlertStore.getState().focusIncident(groupedAlert.id, groupedAlert.occurredAtMs)
-    useAlertStore.getState().enqueuePendingIncident(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
-    useAlertStore.getState().enqueuePendingIncident(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
+    useAlertStore.getState().appendIncidentStreamAlert(groupedAlert.id, groupedAlert.occurredAtMs)
+    useAlertStore.getState().appendIncidentStreamAlert(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
 
-    expect(useAlertStore.getState().focusedIncidentAlertId).toBe(groupedAlert.id)
-    expect(useAlertStore.getState().selectedAlertId).toBe(groupedAlert.id)
-    expect(useAlertStore.getState().pendingIncidentQueue).toEqual([
-      {
-        alertId: groupedAlertTwo.id,
-        receivedAtMs: groupedAlertTwo.occurredAtMs,
-      },
+    expect(useAlertStore.getState().focusedIncidentStreamKey).toBe(`alert:${groupedAlert.id}`)
+    expect(useAlertStore.getState().incidentStreamItems.map((item) => item.key)).toEqual([
+      `alert:${groupedAlertTwo.id}`,
+      `alert:${groupedAlert.id}`,
     ])
   })
 
-  it('promotes a queued grouped incident and removes it from the queue', () => {
+  it('promotes the newest remaining incident stream item when the focused one expires', () => {
+    const now = groupedAlertTwo.occurredAtMs + 1_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    useAlertStore.getState().setRetentionMs(30_000)
+    useAlertStore.getState().setAlerts([groupedAlert, groupedAlertTwo], now)
+    useAlertStore.getState().setHistoryAlerts([groupedAlert, groupedAlertTwo], now)
+    useAlertStore.getState().appendIncidentStreamAlert(groupedAlert.id, groupedAlert.occurredAtMs)
+    useAlertStore.getState().appendIncidentStreamAlert(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
+
+    useAlertStore.getState().pruneIncidentStream(groupedAlert.occurredAtMs + 31_000)
+
+    expect(useAlertStore.getState().incidentStreamItems.map((item) => item.key)).toEqual([
+      `alert:${groupedAlertTwo.id}`,
+    ])
+    expect(useAlertStore.getState().focusedIncidentStreamKey).toBe(`alert:${groupedAlertTwo.id}`)
+  })
+
+  it('stores streamable system messages with unique stream keys', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(incidentEndedMessage.receivedAtMs + 500)
+    useAlertStore.getState().addSystemMessage(incidentEndedMessage)
+    useAlertStore.getState().appendIncidentStreamSystem(
+      getSystemMessageStreamKey(incidentEndedMessage),
+      incidentEndedMessage.receivedAtMs,
+    )
+
+    expect(useAlertStore.getState().systemMessages).toHaveLength(1)
+    expect(useAlertStore.getState().incidentStreamItems).toEqual([
+      expect.objectContaining({
+        key: `system:${getSystemMessageStreamKey(incidentEndedMessage)}`,
+        kind: 'system',
+      }),
+    ])
+  })
+
+  it('clears the live stream when the dock is dismissed', () => {
     const now = groupedAlertTwo.occurredAtMs + 1_000
     useAlertStore.getState().setAlerts([groupedAlert, groupedAlertTwo], now)
     useAlertStore.getState().setHistoryAlerts([groupedAlert, groupedAlertTwo], now)
-    useAlertStore.getState().focusIncident(groupedAlert.id, groupedAlert.occurredAtMs)
-    useAlertStore.getState().enqueuePendingIncident(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
+    useAlertStore.getState().appendIncidentStreamAlert(groupedAlert.id, groupedAlert.occurredAtMs)
 
-    useAlertStore.getState().promotePendingIncident(groupedAlertTwo.id)
+    useAlertStore.getState().clearIncidentStream()
 
-    expect(useAlertStore.getState().focusedIncidentAlertId).toBe(groupedAlertTwo.id)
-    expect(useAlertStore.getState().selectedAlertId).toBe(groupedAlertTwo.id)
-    expect(useAlertStore.getState().pendingIncidentQueue).toEqual([])
+    expect(useAlertStore.getState().incidentStreamItems).toEqual([])
+    expect(useAlertStore.getState().focusedIncidentStreamKey).toBeNull()
   })
 })

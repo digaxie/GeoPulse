@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import Feature from 'ol/Feature'
 import { boundingExtent } from 'ol/extent'
@@ -45,6 +45,7 @@ import {
 } from '@/components/map/conflictMapScene'
 import { createAlertLayer, type AlertBindings } from '@/features/alerts/AlertMapLayer'
 import {
+  type AlertIncidentDockItem,
   type AlertAudioRole,
   type AlertFeedStatus,
   DEFAULT_SCENARIO_ALERT_SETTINGS,
@@ -52,8 +53,10 @@ import {
   formatAlertShelterInstruction,
   getAlertAudioSettingsForRole,
   getAlertAgeMinutes,
+  getSystemMessageStreamKey,
   getAlertSirenThrottleWindowMs,
   isGroupedIncidentAlert,
+  isIncidentStreamSystemMessage,
   getAlertTypeLabel,
   type RocketAlert,
 } from '@/features/alerts/types'
@@ -586,7 +589,7 @@ function isMovableHudElementKind(kind: ScenarioElement['kind']): kind is Movable
   )
 }
 
-// ── Style object caches ──────────────────────────────────────────────────────
+// â”€â”€ Style object caches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const _fillCache = new Map<string, Fill>()
 function cachedFill(color: string): Fill {
@@ -818,7 +821,7 @@ function getAssetPreviewMeta(
 async function loadJson(url: string) {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`${url} yüklenemedi.`)
+    throw new Error(`${url} yÃ¼klenemedi.`)
   }
 
   return response.json()
@@ -906,13 +909,14 @@ export function ConflictMap({
   const mergeAlertHistoryIntoStore = useAlertStore((state) => state.mergeHistoryAlerts)
   const pruneAlertHistory = useAlertStore((state) => state.pruneHistoryAlerts)
   const pruneActiveAlerts = useAlertStore((state) => state.pruneActiveAlerts)
+  const pruneIncidentStream = useAlertStore((state) => state.pruneIncidentStream)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
-  const focusedIncidentAlertId = useAlertStore((state) => state.focusedIncidentAlertId)
-  const pendingIncidentQueue = useAlertStore((state) => state.pendingIncidentQueue)
-  const focusIncident = useAlertStore((state) => state.focusIncident)
-  const enqueuePendingIncident = useAlertStore((state) => state.enqueuePendingIncident)
-  const promotePendingIncident = useAlertStore((state) => state.promotePendingIncident)
-  const clearFocusedIncident = useAlertStore((state) => state.clearFocusedIncident)
+  const incidentStreamItems = useAlertStore((state) => state.incidentStreamItems)
+  const focusedIncidentStreamKey = useAlertStore((state) => state.focusedIncidentStreamKey)
+  const appendIncidentStreamAlert = useAlertStore((state) => state.appendIncidentStreamAlert)
+  const appendIncidentStreamSystem = useAlertStore((state) => state.appendIncidentStreamSystem)
+  const focusIncidentStreamItem = useAlertStore((state) => state.focusIncidentStreamItem)
+  const clearIncidentStream = useAlertStore((state) => state.clearIncidentStream)
   const requestRevealAlertsPanel = useAlertStore((state) => state.requestRevealAlertsPanel)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
@@ -1130,7 +1134,7 @@ export function ConflictMap({
 
       focusedAlertIdRef.current = newestAlert.id
 
-      // citiesDetail varsa tüm şehirlerin koordinatlarını topla
+      // citiesDetail varsa tÃ¼m ÅŸehirlerin koordinatlarÄ±nÄ± topla
       const allPoints: [number, number][] = []
       for (const alert of sortedIncomingAlerts) {
         if (alert.citiesDetail && alert.citiesDetail.length > 0) {
@@ -1190,7 +1194,7 @@ export function ConflictMap({
     applyAlertBatchFocus(incomingAlerts)
   })
 
-  // refreshAlertHistory removed — Tzeva Adom relay handles history via Supabase
+  // refreshAlertHistory removed â€” Tzeva Adom relay handles history via Supabase
 
   const setAudioUnlockState = useCallback((nextState: AlertAudioUnlockState) => {
     alertAudioUnlockStateRef.current = nextState
@@ -1428,24 +1432,41 @@ export function ConflictMap({
   }, [alertsEnabled, pruneAlertHistory])
 
   useEffect(() => {
-    if (!alertsEnabled || alerts.length === 0) {
+    if (!alertsEnabled) {
+      return
+    }
+
+    const alertExpiries = alerts.map((alert) => alert.occurredAtMs + alertRetentionMs)
+    const streamExpiries = incidentStreamItems.map((item) => item.expiresAtMs)
+    const expiries = [...alertExpiries, ...streamExpiries]
+
+    if (expiries.length === 0) {
       return
     }
 
     const now = Date.now()
-    const nextExpiryAtMs = Math.min(...alerts.map((alert) => alert.occurredAtMs + alertRetentionMs))
+    const nextExpiryAtMs = Math.min(...expiries)
     const delayMs = Math.max(0, nextExpiryAtMs - now)
 
     const timerId = window.setTimeout(() => {
-      pruneActiveAlerts(Date.now())
+      const nextNow = Date.now()
+      pruneActiveAlerts(nextNow)
+      pruneIncidentStream(nextNow)
     }, delayMs)
 
     return () => {
       window.clearTimeout(timerId)
     }
-  }, [alertRetentionMs, alerts, alertsEnabled, pruneActiveAlerts])
+  }, [
+    alertRetentionMs,
+    alerts,
+    alertsEnabled,
+    incidentStreamItems,
+    pruneActiveAlerts,
+    pruneIncidentStream,
+  ])
 
-  // ── Tzeva Adom WebSocket Feed ──
+  // â”€â”€ Tzeva Adom WebSocket Feed â”€â”€
   useEffect(() => {
     if (!alertsEnabled || !appEnv.tzevaadomRelayUrl) return
 
@@ -1457,10 +1478,10 @@ export function ConflictMap({
         const enriched = tzAlert.citiesEnriched ?? []
         const citiesEn = enriched.length > 0
           ? enriched.map((c) => c.en).join(', ')
-          : tzAlert.cities.join(', ') || 'Bilinmeyen bölge'
+          : tzAlert.cities.join(', ') || 'Bilinmeyen bÃ¶lge'
         const firstWithCoord = enriched.find((c) => c.lat != null && c.lng != null)
 
-        // Her şehrin ayrı koordinatını sakla (haritada ayrı pin için)
+        // Her ÅŸehrin ayrÄ± koordinatÄ±nÄ± sakla (haritada ayrÄ± pin iÃ§in)
         const citiesDetail = enriched
           .filter((c) => c.lat != null && c.lng != null)
           .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng!, zone: c.zone_en || '', countdown: c.countdown ?? 0 }))
@@ -1486,23 +1507,28 @@ export function ConflictMap({
         const merged = [...currentAlerts.filter((a) => a.id !== rocketAlert.id), rocketAlert]
         setAlertStoreAlerts(merged, Date.now())
 
-        // Siren çal
+        // Siren Ã§al
         playAlertSiren()
 
         if (isGroupedIncidentAlert(rocketAlert)) {
-          const hasFocusedIncident = Boolean(useAlertStore.getState().focusedIncidentAlertId)
+          const currentState = useAlertStore.getState()
+          const selectedDockAlert = currentState.selectedAlertId
+            ? currentState.alerts.find((alert) => alert.id === currentState.selectedAlertId) ??
+              currentState.historyAlerts.find((alert) => alert.id === currentState.selectedAlertId) ??
+              null
+            : null
+          const hasIncidentDockFocus =
+            currentState.focusedIncidentStreamKey !== null ||
+            currentState.focusedSystemMessageId !== null ||
+            isGroupedIncidentAlert(selectedDockAlert)
 
-          if (!hasFocusedIncident) {
-            if (!alertAutoZoomEnabled) {
-              alertSkipSelectedFocusOnceRef.current = true
-            }
+          appendIncidentStreamAlert(rocketAlert.id, rocketAlert.occurredAtMs)
+          if (access === 'editor') {
+            requestRevealAlertsPanel()
+          }
 
-            focusIncident(rocketAlert.id, rocketAlert.occurredAtMs)
-            if (access === 'editor') {
-              requestRevealAlertsPanel()
-            }
-          } else {
-            enqueuePendingIncident(rocketAlert.id, rocketAlert.occurredAtMs)
+          if (!hasIncidentDockFocus && alertAutoZoomEnabled && firstWithCoord) {
+            focusAlertBatch([rocketAlert])
           }
         } else if (alertAutoZoomEnabled && firstWithCoord) {
           focusAlertBatch([rocketAlert])
@@ -1514,14 +1540,20 @@ export function ConflictMap({
           titleEn: message.titleEn,
           bodyEn: message.bodyEn,
         })
-        // Sadece incident_ended ve early_warning göster, unknown/diğerlerini atla
-        if (message.type === 'incident_ended' || message.type === 'early_warning') {
+        // Sadece incident_ended ve early_warning gÃ¶ster, unknown/diÄŸerlerini atla
+        if (isIncidentStreamSystemMessage(message)) {
           addSystemMessage(message)
+          if ((message.citiesEnriched?.length ?? 0) > 0) {
+            appendIncidentStreamSystem(getSystemMessageStreamKey(message), message.receivedAtMs)
+            if (access === 'editor') {
+              requestRevealAlertsPanel()
+            }
+          }
         }
       },
       onStatusChange: (status) => {
         setTzevaadomStatus(status)
-        // Feed status'u ana alarm paneline de yansıt
+        // Feed status'u ana alarm paneline de yansÄ±t
         const statusMap: Record<string, AlertFeedStatus> = {
           connected: 'live',
           connecting: 'connecting',
@@ -1533,7 +1565,7 @@ export function ConflictMap({
       },
     })
 
-    // Supabase'den son 24 saatteki geçmiş alertleri çek
+    // Supabase'den son 24 saatteki geÃ§miÅŸ alertleri Ã§ek
     if (publicViewerSupabase) {
       fetchTzevaadomHistory(publicViewerSupabase, 24).then(({ alerts: histAlerts, systemMessages: histMsgs }) => {
         const asRocketAlerts = histAlerts.map((a) => {
@@ -1541,7 +1573,7 @@ export function ConflictMap({
           const enriched = a.citiesEnriched ?? []
           const citiesEn = enriched.length > 0
             ? enriched.map((c) => c.en).join(', ')
-            : a.cities.join(', ') || 'Bilinmeyen bölge'
+            : a.cities.join(', ') || 'Bilinmeyen bÃ¶lge'
           const firstWithCoord = enriched.find((c) => c.lat != null && c.lng != null)
           const occurredAtMs = a.time * 1000
           const citiesDetail = enriched
@@ -1566,7 +1598,7 @@ export function ConflictMap({
         if (asRocketAlerts.length > 0) {
           mergeAlertHistoryIntoStore(asRocketAlerts)
         }
-        // System message'ları (sadece incident_ended ve early_warning) ekle
+        // System message'larÄ± (sadece incident_ended ve early_warning) ekle
         for (const msg of histMsgs) {
           if (msg.type === 'incident_ended' || msg.type === 'early_warning') {
             addSystemMessage(msg)
@@ -2204,8 +2236,8 @@ export function ConflictMap({
 
       setMapError(
         error instanceof Error
-          ? `OpenFreeMap yüklenemedi: ${error.message}`
-          : 'OpenFreeMap katmanı yüklenirken hata oluştu.',
+          ? `OpenFreeMap yÃ¼klenemedi: ${error.message}`
+          : 'OpenFreeMap katmanÄ± yÃ¼klenirken hata oluÅŸtu.',
       )
     }
   })
@@ -3206,7 +3238,7 @@ export function ConflictMap({
         setMapError(
           loadError instanceof Error
             ? loadError.message
-            : 'Harita tabanı yüklenirken hata oluştu.',
+            : 'Harita tabanÄ± yÃ¼klenirken hata oluÅŸtu.',
         )
       }
     }
@@ -3478,58 +3510,19 @@ export function ConflictMap({
       ? alertSettings.sharedFocusedSystemMessageId
       : null
 
-    if (sharedFocusedSystemMessageId !== null) {
-      if (selectedAlertId !== null) {
-        setSelectedAlertId(null)
-      }
-      if (focusedIncidentAlertId !== null) {
-        clearFocusedIncident()
-      }
-      if (focusedSystemMessageId !== sharedFocusedSystemMessageId) {
-        setFocusedSystemMessageId(sharedFocusedSystemMessageId)
-      }
-      return
-    }
-
-    if (focusedSystemMessageId !== null) {
-      setFocusedSystemMessageId(null)
-    }
-
     if (selectedAlertId !== sharedSelectedAlertId) {
       setSelectedAlertId(sharedSelectedAlertId)
     }
 
-    const sharedSelectedAlert = sharedSelectedAlertId
-      ? alerts.find((alert) => alert.id === sharedSelectedAlertId) ??
-        historyAlerts.find((alert) => alert.id === sharedSelectedAlertId) ??
-        null
-      : null
-
-    if (!sharedSelectedAlertId || (sharedSelectedAlert && !isGroupedIncidentAlert(sharedSelectedAlert))) {
-      if (focusedIncidentAlertId !== null) {
-        clearFocusedIncident()
-      }
-      return
-    }
-
-    if (
-      sharedSelectedAlert &&
-      isGroupedIncidentAlert(sharedSelectedAlert) &&
-      focusedIncidentAlertId !== sharedSelectedAlert.id
-    ) {
-      focusIncident(sharedSelectedAlert.id, sharedSelectedAlert.occurredAtMs)
+    if (focusedSystemMessageId !== sharedFocusedSystemMessageId) {
+      setFocusedSystemMessageId(sharedFocusedSystemMessageId)
     }
   }, [
     access,
     alertSettings.sharedFocusedSystemMessageId,
     alertSettings.sharedSelectedAlertId,
-    alerts,
     alertsEnabled,
-    clearFocusedIncident,
-    focusIncident,
-    focusedIncidentAlertId,
     focusedSystemMessageId,
-    historyAlerts,
     selectedAlertId,
     setFocusedSystemMessageId,
     setSelectedAlertId,
@@ -3544,7 +3537,7 @@ export function ConflictMap({
     bindings.setFocusedAlert(alertsEnabled ? selectedAlert : null)
   }, [alertsEnabled, selectedAlert])
 
-  // Early warning / incident_ended tıklanınca şehirlerini haritada göster
+  // Early warning / incident_ended tÄ±klanÄ±nca ÅŸehirlerini haritada gÃ¶ster
   useEffect(() => {
     const bindings = alertBindingsRef.current
     if (!bindings) return
@@ -3567,7 +3560,7 @@ export function ConflictMap({
     const pinColor = msg.type === 'incident_ended' ? '#16a34a' : '#f59e0b'
     bindings.setWarningCities(cities, pinColor)
 
-    // Haritayı bu şehirlere zoom yap
+    // HaritayÄ± bu ÅŸehirlere zoom yap
     const map = mapRef.current
     const view = map?.getView()
     if (map && view && cities.length > 0) {
@@ -3580,7 +3573,7 @@ export function ConflictMap({
     }
   }, [alertsEnabled, focusedSystemMessageId, systemMessages])
 
-  // City chip click → zoom to coordinate
+  // City chip click â†’ zoom to coordinate
   const focusCoordinate = useAlertStore((state) => state.focusCoordinate)
   const focusTrigger = useAlertStore((state) => state.focusTrigger)
 
@@ -3640,15 +3633,21 @@ export function ConflictMap({
       return
     }
 
-    if (focusedIncidentAlertId === selectedAlert.id) {
-      return
+    const nextStreamKey = `alert:${selectedAlert.id}`
+    if (focusedIncidentStreamKey !== nextStreamKey) {
+      focusIncidentStreamItem(nextStreamKey)
     }
 
-    focusIncident(selectedAlert.id, selectedAlert.occurredAtMs)
     if (access === 'editor') {
       requestRevealAlertsPanel()
     }
-  }, [access, focusIncident, focusedIncidentAlertId, requestRevealAlertsPanel, selectedAlert])
+  }, [
+    access,
+    focusIncidentStreamItem,
+    focusedIncidentStreamKey,
+    requestRevealAlertsPanel,
+    selectedAlert,
+  ])
 
   useEffect(() => {
     if (
@@ -4386,37 +4385,104 @@ export function ConflictMap({
     [missileRuntimeFlights],
   )
   const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
-  const focusedIncidentAlert = useMemo(() => {
-    if (!focusedIncidentAlertId) {
+  const resolvedIncidentStreamItems = useMemo<AlertIncidentDockItem[]>(() => {
+    const nextItems: AlertIncidentDockItem[] = []
+
+    for (const item of incidentStreamItems) {
+      if (item.kind === 'alert') {
+        const alert =
+          alerts.find((activeAlert) => activeAlert.id === item.alertId) ??
+          historyAlerts.find((historyAlert) => historyAlert.id === item.alertId) ??
+          null
+
+        if (!alert || !isGroupedIncidentAlert(alert)) {
+          continue
+        }
+
+        nextItems.push({
+          key: item.key,
+          kind: 'alert',
+          receivedAtMs: item.receivedAtMs,
+          expiresAtMs: item.expiresAtMs,
+          isLive: true,
+          alert,
+        })
+        continue
+      }
+
+      const message =
+        systemMessages.find(
+          (candidate) => getSystemMessageStreamKey(candidate) === item.systemMessageKey,
+        ) ?? null
+      if (
+        !message ||
+        !isIncidentStreamSystemMessage(message) ||
+        (message.citiesEnriched?.length ?? 0) === 0
+      ) {
+        continue
+      }
+
+      nextItems.push({
+        key: item.key,
+        kind: 'system',
+        receivedAtMs: item.receivedAtMs,
+        expiresAtMs: item.expiresAtMs,
+        isLive: true,
+        message,
+      })
+    }
+
+    return nextItems
+  }, [alerts, historyAlerts, incidentStreamItems, systemMessages])
+  const focusedLiveIncidentItem = useMemo(
+    () =>
+      resolvedIncidentStreamItems.find((item) => item.key === focusedIncidentStreamKey) ??
+      resolvedIncidentStreamItems[0] ??
+      null,
+    [focusedIncidentStreamKey, resolvedIncidentStreamItems],
+  )
+  const selectedGroupedAlertDockItem = useMemo(() => {
+    if (!selectedAlert || !isGroupedIncidentAlert(selectedAlert)) {
       return null
     }
 
-    const alert =
-      alerts.find((activeAlert) => activeAlert.id === focusedIncidentAlertId) ??
-      historyAlerts.find((historyAlert) => historyAlert.id === focusedIncidentAlertId) ??
-      null
+    return {
+      key: `alert:${selectedAlert.id}`,
+      kind: 'alert',
+      receivedAtMs: selectedAlert.occurredAtMs,
+      expiresAtMs: null,
+      isLive: false,
+      alert: selectedAlert,
+    } satisfies AlertIncidentDockItem
+  }, [selectedAlert])
+  const selectedSystemDockItem = useMemo(() => {
+    if (focusedSystemMessageId === null) {
+      return null
+    }
 
-    return isGroupedIncidentAlert(alert) ? alert : null
-  }, [alerts, focusedIncidentAlertId, historyAlerts])
+    const message = systemMessages.find((candidate) => candidate.id === focusedSystemMessageId) ?? null
+    if (
+      !message ||
+      !isIncidentStreamSystemMessage(message) ||
+      (message.citiesEnriched?.length ?? 0) === 0
+    ) {
+      return null
+    }
 
-  const pendingIncidentEntries = useMemo(
-    () =>
-      pendingIncidentQueue
-        .map((item) => {
-          const alert =
-            alerts.find((activeAlert) => activeAlert.id === item.alertId) ??
-            historyAlerts.find((historyAlert) => historyAlert.id === item.alertId) ??
-            null
-
-          return alert && isGroupedIncidentAlert(alert) ? { ...item, alert } : null
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null),
-    [alerts, historyAlerts, pendingIncidentQueue],
-  )
-  const showFocusedIncidentDock = focusedIncidentAlert !== null
+    return {
+      key: `system:${getSystemMessageStreamKey(message)}`,
+      kind: 'system',
+      receivedAtMs: message.receivedAtMs,
+      expiresAtMs: null,
+      isLive: false,
+      message,
+    } satisfies AlertIncidentDockItem
+  }, [focusedSystemMessageId, systemMessages])
+  const dockFocusedItem = selectedSystemDockItem ?? selectedGroupedAlertDockItem ?? focusedLiveIncidentItem
+  const showFocusedIncidentDock = dockFocusedItem !== null
 
   const selectedAlertSummary = useMemo(() => {
-    if (!selectedAlert) {
+    if (!selectedAlert || isGroupedIncidentAlert(selectedAlert)) {
       return null
     }
 
@@ -4432,27 +4498,59 @@ export function ConflictMap({
     }
   }, [alertNow, selectedAlert])
 
-  const focusedSystemSummary = useMemo(() => {
-    if (!focusedSystemMessageId) return null
-    const msg = systemMessages.find((m) => m.id === focusedSystemMessageId)
-    if (!msg) return null
-    const cities = msg.citiesEnriched
-      ?.filter((c) => c.lat != null && c.lng != null)
-      .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng! })) ?? []
-    return {
-      title: msg.titleEn || msg.titleHe || 'Sistem Mesajı',
-      body: msg.bodyEn || msg.bodyHe,
-      type: msg.type,
-      cities,
-      chipColor: msg.type === 'incident_ended' ? 'green' : 'orange',
+  const handleSelectIncidentStreamItem = useCallback((key: string) => {
+    focusIncidentStreamItem(key)
+    const item = resolvedIncidentStreamItems.find((candidate) => candidate.key === key)
+    if (!item) {
+      return
     }
-  }, [focusedSystemMessageId, systemMessages])
 
-  const dismissFocusedIncidentPanel = useEffectEvent(() => {
-    clearFocusedIncident()
+    if (item.kind === 'alert') {
+      setFocusedSystemMessageId(null)
+      setSelectedAlertId(item.alert.id)
+      const firstCity = item.alert.citiesDetail?.find(
+        (city) => city.lat !== 0 && city.lon !== 0,
+      )
+      if (firstCity) {
+        setFocusCoordinate({
+          lat: firstCity.lat,
+          lon: firstCity.lon,
+          name: firstCity.name,
+        })
+      } else if (item.alert.lat !== 0 && item.alert.lon !== 0) {
+        setFocusCoordinate({
+          lat: item.alert.lat,
+          lon: item.alert.lon,
+          name: item.alert.englishName,
+        })
+      }
+      return
+    }
+
+    setSelectedAlertId(null)
+    setFocusedSystemMessageId(item.message.id)
+    const firstCity = item.message.citiesEnriched?.find(
+      (city) => city.lat != null && city.lng != null,
+    )
+    if (firstCity?.lat != null && firstCity.lng != null) {
+      setFocusCoordinate({
+        lat: firstCity.lat,
+        lon: firstCity.lng,
+        name: firstCity.en || firstCity.he,
+      })
+    }
+  }, [
+    focusIncidentStreamItem,
+    resolvedIncidentStreamItems,
+    setFocusCoordinate,
+    setFocusedSystemMessageId,
+    setSelectedAlertId,
+  ])
+  const dismissFocusedIncidentPanel = useCallback(() => {
+    clearIncidentStream()
     setSelectedAlertId(null)
     setFocusedSystemMessageId(null)
-  })
+  }, [clearIncidentStream, setFocusedSystemMessageId, setSelectedAlertId])
 
   return (
     <div
@@ -4477,7 +4575,7 @@ export function ConflictMap({
           style={{ top: showSceneBar ? '4.5rem' : '1rem' }}
           type="button"
         >
-          Alarm sesi için bir kez dokunun
+          Alarm sesi iÃ§in bir kez dokunun
         </button>
       ) : null}
       <LocationSearch
@@ -4515,58 +4613,33 @@ export function ConflictMap({
           ))}
         </div>
       ) : null}
-      {showFocusedIncidentDock && focusedIncidentAlert ? (
+      {showFocusedIncidentDock && dockFocusedItem ? (
         <FocusedAlertIncidentView
-          alert={focusedIncidentAlert}
+          focusedItem={dockFocusedItem}
           onDismiss={dismissFocusedIncidentPanel}
           onFocusCity={setFocusCoordinate}
-          onSelectQueue={promotePendingIncident}
-          queueItems={pendingIncidentEntries}
+          onSelectStreamItem={handleSelectIncidentStreamItem}
+          streamItems={resolvedIncidentStreamItems}
           variant="overlay"
         />
       ) : null}
-        {selectedAlertSummary && focusedIncidentAlert === null ? (
-          <div className="alert-selection-hud">
-            <div className="alert-selection-hud-title">
-              <strong>{selectedAlertSummary.englishName}</strong>
-              <span>{selectedAlertSummary.alertTypeLabel}</span>
-            </div>
-            <div className="alert-selection-hud-meta">
-              <span>{selectedAlertSummary.shelterText}</span>
-              <span>{selectedAlertSummary.ageMinutes} dk önce</span>
-              <span>{selectedAlertSummary.occurredAtText}</span>
-            </div>
-            {selectedAlertSummary.citiesDetail && selectedAlertSummary.citiesDetail.length > 1 && (
-              <div className="alert-hud-cities">
-                {selectedAlertSummary.citiesDetail.map((city, i) => (
-                  <button
-                    key={`${city.name}-${i}`}
-                    className="alert-hud-city-chip"
-                    type="button"
-                    onClick={() => setFocusCoordinate({ lat: city.lat, lon: city.lon, name: city.name })}
-                  >
-                    {city.name}
-                  </button>
-                ))}
-              </div>
-            )}
+      {selectedAlertSummary && dockFocusedItem === null ? (
+        <div className="alert-selection-hud">
+          <div className="alert-selection-hud-title">
+            <strong>{selectedAlertSummary.englishName}</strong>
+            <span>{selectedAlertSummary.alertTypeLabel}</span>
           </div>
-        ) : null}
-        {focusedSystemSummary && focusedSystemSummary.cities.length > 0 ? (
-          <div className={`alert-selection-hud alert-selection-hud-${focusedSystemSummary.chipColor}`}>
-            <div className="alert-selection-hud-title">
-              <strong>{focusedSystemSummary.title}</strong>
-            </div>
-            {focusedSystemSummary.body && (
-              <div className="alert-selection-hud-meta">
-                <span>{focusedSystemSummary.body}</span>
-              </div>
-            )}
+          <div className="alert-selection-hud-meta">
+            <span>{selectedAlertSummary.shelterText}</span>
+            <span>{selectedAlertSummary.ageMinutes} dk önce</span>
+            <span>{selectedAlertSummary.occurredAtText}</span>
+          </div>
+          {selectedAlertSummary.citiesDetail && selectedAlertSummary.citiesDetail.length > 1 && (
             <div className="alert-hud-cities">
-              {focusedSystemSummary.cities.map((city, i) => (
+              {selectedAlertSummary.citiesDetail.map((city, i) => (
                 <button
                   key={`${city.name}-${i}`}
-                  className={`alert-hud-city-chip alert-hud-city-chip-${focusedSystemSummary.chipColor}`}
+                  className="alert-hud-city-chip"
                   type="button"
                   onClick={() => setFocusCoordinate({ lat: city.lat, lon: city.lon, name: city.name })}
                 >
@@ -4574,9 +4647,9 @@ export function ConflictMap({
                 </button>
               ))}
             </div>
-          </div>
-        ) : null}
-      {selectionHud && manipulationPreview ? (
+          )}
+        </div>
+      ) : null}      {selectionHud && manipulationPreview ? (
         <div
           className="selection-drag-preview"
           style={{
@@ -4615,9 +4688,9 @@ export function ConflictMap({
               state.updateSelectedElementNumeric('rotation', currentRotation - HUD_ROTATION_STEP)
             }}
             type="button"
-            title="Sola döndür"
+            title="Sola dÃ¶ndÃ¼r"
           >
-            ↺
+            â†º
           </button>
           {selectionHud.canScale ? (
             <>
@@ -4630,7 +4703,7 @@ export function ConflictMap({
                 .updateSelectedElementNumeric('scale', (selectionHud.scale ?? 1) - 0.15)
             }
             type="button"
-            title="Küçült"
+            title="KÃ¼Ã§Ã¼lt"
           >
             -
           </button>
@@ -4644,7 +4717,7 @@ export function ConflictMap({
                 .updateSelectedElementNumeric('scale', (selectionHud.scale ?? 1) + 0.15)
             }
             type="button"
-            title="Büyüt"
+            title="BÃ¼yÃ¼t"
           >
             +
           </button>
@@ -4662,9 +4735,9 @@ export function ConflictMap({
               state.updateSelectedElementNumeric('rotation', currentRotation + HUD_ROTATION_STEP)
             }}
             type="button"
-            title="Sağa döndür"
+            title="SaÄŸa dÃ¶ndÃ¼r"
           >
-            ↻
+            â†»
           </button>
           <span className="selection-hud-divider" />
           <button
@@ -4673,9 +4746,9 @@ export function ConflictMap({
               useScenarioStore.getState().toggleSelectedLock()
             }}
             type="button"
-            title={selectionHud.locked ? 'Kilidi aç' : 'Kilitle'}
+            title={selectionHud.locked ? 'Kilidi aÃ§' : 'Kilitle'}
           >
-            {selectionHud.locked ? 'Kilitli' : 'Açık'}
+            {selectionHud.locked ? 'Kilitli' : 'AÃ§Ä±k'}
           </button>
           <button
             className="selection-hud-button selection-hud-delete"
@@ -4686,7 +4759,7 @@ export function ConflictMap({
             type="button"
             title="Sil"
           >
-            ✕
+            âœ•
           </button>
           <button
             className="selection-hud-button selection-hud-confirm"
@@ -4696,7 +4769,7 @@ export function ConflictMap({
             type="button"
             title="Tamam"
           >
-            ✓
+            âœ“
           </button>
         </div>
       ) : null}
@@ -4742,9 +4815,9 @@ export function ConflictMap({
               className="inline-text-btn inline-text-cancel"
               type="button"
               onClick={() => setInlineTextInput(null)}
-              title="İptal"
+              title="Ä°ptal"
             >
-              ✕
+              âœ•
             </button>
             <button
               className="inline-text-btn inline-text-confirm"
@@ -4763,7 +4836,7 @@ export function ConflictMap({
               }}
               title="Tamam"
             >
-              ✓
+              âœ“
             </button>
           </div>
         </div>
@@ -4783,3 +4856,6 @@ export function ConflictMap({
     </div>
   )
 }
+
+
+

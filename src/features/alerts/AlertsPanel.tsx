@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import {
+  getSystemMessageStreamKey,
   DEFAULT_SCENARIO_ALERT_SETTINGS,
   formatAlertShelterInstruction,
   formatTimelineDualTime,
   isGroupedIncidentAlert,
+  isIncidentStreamSystemMessage,
   getAlertTypeLabel,
   getTimelineItemColor,
   getTimelineItemIcon,
+  type AlertIncidentDockItem,
   type AlertCityDetail,
   type TimelineItem,
 } from '@/features/alerts/types'
@@ -184,11 +187,10 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
   const focusedSystemMessageId = useAlertStore((state) => state.focusedSystemMessageId)
   const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
-  const focusedIncidentAlertId = useAlertStore((state) => state.focusedIncidentAlertId)
-  const pendingIncidentQueue = useAlertStore((state) => state.pendingIncidentQueue)
-  const focusIncident = useAlertStore((state) => state.focusIncident)
-  const promotePendingIncident = useAlertStore((state) => state.promotePendingIncident)
-  const clearFocusedIncident = useAlertStore((state) => state.clearFocusedIncident)
+  const incidentStreamItems = useAlertStore((state) => state.incidentStreamItems)
+  const focusedIncidentStreamKey = useAlertStore((state) => state.focusedIncidentStreamKey)
+  const focusIncidentStreamItem = useAlertStore((state) => state.focusIncidentStreamItem)
+  const clearIncidentStream = useAlertStore((state) => state.clearIncidentStream)
   const retentionMs = useAlertStore((state) => state.retentionMs)
   const setRetentionMs = useAlertStore((state) => state.setRetentionMs)
   const dismissCurrentAlerts = useAlertStore((state) => state.dismissCurrentAlerts)
@@ -250,25 +252,122 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
     return next
   }, [alerts, historyAlerts])
 
-  const focusedIncidentAlert = useMemo(() => {
-    if (!focusedIncidentAlertId) {
+  const resolvedIncidentStreamItems = useMemo<AlertIncidentDockItem[]>(
+    () => {
+      const nextItems: AlertIncidentDockItem[] = []
+
+      for (const item of incidentStreamItems) {
+        if (item.kind === 'alert') {
+          const alert = alertsById.get(item.alertId)
+          if (!alert || !isGroupedIncidentAlert(alert)) {
+            continue
+          }
+
+          nextItems.push({
+            key: item.key,
+            kind: 'alert',
+            receivedAtMs: item.receivedAtMs,
+            expiresAtMs: item.expiresAtMs,
+            isLive: true,
+            alert,
+          })
+          continue
+        }
+
+        const message = systemMessages.find(
+          (candidate) => getSystemMessageStreamKey(candidate) === item.systemMessageKey,
+        )
+        if (
+          !message ||
+          !isIncidentStreamSystemMessage(message) ||
+          (message.citiesEnriched?.length ?? 0) === 0
+        ) {
+          continue
+        }
+
+        nextItems.push({
+          key: item.key,
+          kind: 'system',
+          receivedAtMs: item.receivedAtMs,
+          expiresAtMs: item.expiresAtMs,
+          isLive: true,
+          message,
+        })
+      }
+
+      return nextItems
+    },
+    [alertsById, incidentStreamItems, systemMessages],
+  )
+
+  const selectedGroupedAlert = useMemo(() => {
+    if (!selectedAlertId) {
       return null
     }
 
-    const alert = alertsById.get(focusedIncidentAlertId) ?? null
-    return isGroupedIncidentAlert(alert) ? alert : null
-  }, [alertsById, focusedIncidentAlertId])
+    const alert = alertsById.get(selectedAlertId) ?? null
+    return alert && isGroupedIncidentAlert(alert)
+      ? ({
+          key: `alert:${alert.id}`,
+          kind: 'alert',
+          receivedAtMs: alert.occurredAtMs,
+          expiresAtMs: null,
+          isLive: false,
+          alert,
+        } satisfies AlertIncidentDockItem)
+      : null
+  }, [alertsById, selectedAlertId])
 
-  const pendingIncidentEntries = useMemo(
+  const selectedSystemDockItem = useMemo(() => {
+    if (focusedSystemMessageId === null) {
+      return null
+    }
+
+    const message = systemMessages.find((candidate) => candidate.id === focusedSystemMessageId) ?? null
+    if (
+      !message ||
+      !isIncidentStreamSystemMessage(message) ||
+      (message.citiesEnriched?.length ?? 0) === 0
+    ) {
+      return null
+    }
+
+    return {
+      key: `system:${getSystemMessageStreamKey(message)}`,
+      kind: 'system',
+      receivedAtMs: message.receivedAtMs,
+      expiresAtMs: null,
+      isLive: false,
+      message,
+    } satisfies AlertIncidentDockItem
+  }, [focusedSystemMessageId, systemMessages])
+
+  const focusedLiveIncidentItem = useMemo(
     () =>
-      pendingIncidentQueue
-        .map((item) => {
-          const alert = alertsById.get(item.alertId)
-          return alert && isGroupedIncidentAlert(alert) ? { ...item, alert } : null
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null),
-    [alertsById, pendingIncidentQueue],
+      resolvedIncidentStreamItems.find((item) => item.key === focusedIncidentStreamKey) ??
+      resolvedIncidentStreamItems[0] ??
+      null,
+    [focusedIncidentStreamKey, resolvedIncidentStreamItems],
   )
+
+  const dockFocusedItem = selectedSystemDockItem ?? selectedGroupedAlert ?? focusedLiveIncidentItem
+
+  function handleSelectStreamItem(key: string) {
+    focusIncidentStreamItem(key)
+    const item = resolvedIncidentStreamItems.find((candidate) => candidate.key === key)
+    if (!item) {
+      return
+    }
+
+    if (item.kind === 'alert') {
+      setFocusedSystemMessageId(null)
+      setSelectedAlertId(item.alert.id)
+      return
+    }
+
+    setSelectedAlertId(null)
+    setFocusedSystemMessageId(item.message.id)
+  }
 
   function handleSelectAlert(alertId: string | null) {
     if (!alertId) {
@@ -278,24 +377,22 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
 
     const alert = alertsById.get(alertId)
     if (alert && isGroupedIncidentAlert(alert)) {
-      focusIncident(alert.id, alert.occurredAtMs)
       setFocusedSystemMessageId(null)
+      setSelectedAlertId(alert.id)
       return
     }
 
-    clearFocusedIncident()
     setFocusedSystemMessageId(null)
     setSelectedAlertId(alertId)
   }
 
   function handleSelectSystem(id: number | null) {
-    clearFocusedIncident()
     setSelectedAlertId(null)
     setFocusedSystemMessageId(id)
   }
 
   function handleDismissFocusedIncident() {
-    clearFocusedIncident()
+    clearIncidentStream()
     setSelectedAlertId(null)
     setFocusedSystemMessageId(null)
   }
@@ -325,13 +422,13 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
         <span className="alerts-count-badge">{timeline.length} kayıt</span>
       </div>
 
-      {focusedIncidentAlert ? (
+      {dockFocusedItem ? (
         <FocusedAlertIncidentView
-          alert={focusedIncidentAlert}
+          focusedItem={dockFocusedItem}
           onDismiss={handleDismissFocusedIncident}
           onFocusCity={setFocusCoordinate}
-          onSelectQueue={promotePendingIncident}
-          queueItems={pendingIncidentEntries}
+          onSelectStreamItem={handleSelectStreamItem}
+          streamItems={resolvedIncidentStreamItems}
           variant="sidebar"
         />
       ) : null}

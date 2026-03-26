@@ -3775,6 +3775,27 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+  --incident-solid: rgba(220, 38, 38, 0.9);
+  --incident-soft: rgba(220, 38, 38, 0.12);
+  --incident-overlay-soft: rgba(220, 38, 38, 0.2);
+  --incident-ink: #b91c1c;
+  --incident-overlay-ink: #fff;
+}
+
+.incident-focus-panel-tone-green {
+  --incident-solid: rgba(22, 163, 74, 0.9);
+  --incident-soft: rgba(22, 163, 74, 0.14);
+  --incident-overlay-soft: rgba(22, 163, 74, 0.24);
+  --incident-ink: #166534;
+  --incident-overlay-ink: #f8fff9;
+}
+
+.incident-focus-panel-tone-orange {
+  --incident-solid: rgba(245, 158, 11, 0.9);
+  --incident-soft: rgba(245, 158, 11, 0.16);
+  --incident-overlay-soft: rgba(245, 158, 11, 0.24);
+  --incident-ink: #b45309;
+  --incident-overlay-ink: #fffaf0;
 }
 
 .incident-focus-panel-sidebar {
@@ -3807,6 +3828,12 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 .workspace-map-panel:has(.missile-flight-hud-stack) .incident-focus-panel-overlay {
   top: 5rem;
   max-height: calc(100% - 10.5rem);
+}
+
+.incident-focus-panel-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .incident-focus-panel-header {
@@ -3855,9 +3882,15 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   line-height: 1.5;
 }
 
+.incident-focus-system-body {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  opacity: 0.92;
+}
+
 .incident-focus-panel-overlay .incident-focus-panel-header h3,
-.incident-focus-panel-overlay .incident-focus-group h4,
-.incident-focus-panel-overlay .incident-focus-queue-header h4 {
+.incident-focus-panel-overlay .incident-focus-group h4 {
   color: #f8fbff;
 }
 
@@ -3867,8 +3900,7 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 }
 
 .incident-focus-panel-sidebar .incident-focus-panel-header h3,
-.incident-focus-panel-sidebar .incident-focus-group h4,
-.incident-focus-panel-sidebar .incident-focus-queue-header h4 {
+.incident-focus-panel-sidebar .incident-focus-group h4 {
   color: var(--ink-900);
 }
 
@@ -3889,21 +3921,19 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   gap: 0.4rem;
 }
 
-.incident-focus-group h4,
-.incident-focus-queue-header h4 {
+.incident-focus-group h4 {
   margin: 0;
   font-size: 0.82rem;
 }
 
-.incident-focus-city-chips,
-.incident-focus-queue-list {
+.incident-focus-city-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
 .incident-focus-city-chip,
-.incident-focus-queue-item {
+.incident-focus-stream-item {
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -3914,56 +3944,59 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 }
 
 .incident-focus-city-chip:hover,
-.incident-focus-queue-item:hover {
+.incident-focus-stream-item:hover {
   opacity: 0.88;
 }
 
 .incident-focus-city-chip:active,
-.incident-focus-queue-item:active {
+.incident-focus-stream-item:active {
   transform: scale(0.98);
 }
 
 .incident-focus-panel-sidebar .incident-focus-city-chip {
   padding: 0.2rem 0.55rem;
-  background: rgba(220, 38, 38, 0.12);
-  color: #b91c1c;
+  background: var(--incident-soft);
+  color: var(--incident-ink);
 }
 
 .incident-focus-panel-overlay .incident-focus-city-chip {
   padding: 0.22rem 0.58rem;
-  background: rgba(220, 38, 38, 0.75);
-  color: #fff;
+  background: var(--incident-solid);
+  color: var(--incident-overlay-ink);
 }
 
-.incident-focus-queue {
+.incident-focus-stream-list {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
 }
 
-.incident-focus-queue-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+.incident-focus-stream-item {
+  width: 100%;
+  padding: 0.42rem 0.64rem;
+  text-align: left;
 }
 
-.incident-focus-queue-header span {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.72rem;
-  opacity: 0.75;
-}
-
-.incident-focus-panel-sidebar .incident-focus-queue-item {
-  padding: 0.35rem 0.6rem;
+.incident-focus-panel-sidebar .incident-focus-stream-item {
   background: rgba(13, 27, 46, 0.08);
   color: var(--ink-700);
 }
 
-.incident-focus-panel-overlay .incident-focus-queue-item {
-  padding: 0.38rem 0.62rem;
+.incident-focus-panel-overlay .incident-focus-stream-item {
   background: rgba(255, 255, 255, 0.12);
   color: #f8fbff;
+}
+
+.incident-focus-stream-item-red {
+  box-shadow: inset 3px 0 0 var(--incident-solid);
+}
+
+.incident-focus-stream-item-green {
+  box-shadow: inset 3px 0 0 rgba(22, 163, 74, 0.88);
+}
+
+.incident-focus-stream-item-orange {
+  box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.9);
 }
 
 .alert-selection-hud {
