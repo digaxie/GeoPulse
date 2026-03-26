@@ -4448,6 +4448,12 @@ export function ConflictMap({
     }
   }, [focusedSystemMessageId, systemMessages])
 
+  const dismissFocusedIncidentPanel = useEffectEvent(() => {
+    clearFocusedIncident()
+    setSelectedAlertId(null)
+    setFocusedSystemMessageId(null)
+  })
+
   return (
     <div
       className={`map-stage ${usesDeFactoLayers(basemap.preset) ? 'map-stage-de-facto' : 'map-stage-live'} map-theme-${stylePrefs.backgroundPreset}${selectedTool === 'eraser' && !readOnly ? ' map-tool-eraser' : ''}`}
@@ -4512,6 +4518,7 @@ export function ConflictMap({
       {showFocusedIncidentDock && focusedIncidentAlert ? (
         <FocusedAlertIncidentView
           alert={focusedIncidentAlert}
+          onDismiss={dismissFocusedIncidentPanel}
           onFocusCity={setFocusCoordinate}
           onSelectQueue={promotePendingIncident}
           queueItems={pendingIncidentEntries}

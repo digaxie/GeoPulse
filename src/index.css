@@ -3816,6 +3816,29 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   gap: 0.75rem;
 }
 
+.incident-focus-panel-dismiss {
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  transition: opacity 0.12s, transform 0.1s;
+}
+
+.incident-focus-panel-dismiss:hover {
+  opacity: 0.88;
+}
+
+.incident-focus-panel-dismiss:active {
+  transform: scale(0.96);
+}
+
 .incident-focus-panel-eyebrow {
   margin: 0 0 0.2rem;
   font-family: 'IBM Plex Mono', monospace;
@@ -3838,9 +3861,19 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   color: #f8fbff;
 }
 
+.incident-focus-panel-overlay .incident-focus-panel-dismiss {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f8fbff;
+}
+
 .incident-focus-panel-sidebar .incident-focus-panel-header h3,
 .incident-focus-panel-sidebar .incident-focus-group h4,
 .incident-focus-panel-sidebar .incident-focus-queue-header h4 {
+  color: var(--ink-900);
+}
+
+.incident-focus-panel-sidebar .incident-focus-panel-dismiss {
+  background: rgba(13, 27, 46, 0.08);
   color: var(--ink-900);
 }
 

@@ -17,6 +17,7 @@ type FocusedAlertIncidentViewProps = {
   queueItems: ResolvedIncidentQueueItem[]
   onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
   onSelectQueue: (alertId: string) => void
+  onDismiss: () => void
   variant: 'overlay' | 'sidebar'
 }
 
@@ -25,6 +26,7 @@ export function FocusedAlertIncidentView({
   queueItems,
   onFocusCity,
   onSelectQueue,
+  onDismiss,
   variant,
 }: FocusedAlertIncidentViewProps) {
   const cityGroups = groupAlertCitiesByZone(alert)
@@ -46,6 +48,14 @@ export function FocusedAlertIncidentView({
           <p className="incident-focus-panel-eyebrow">Incelenen alarm</p>
           <h3>{summary}</h3>
         </div>
+        <button
+          aria-label="Incelenen alarm panelini kapat"
+          className="incident-focus-panel-dismiss"
+          onClick={onDismiss}
+          type="button"
+        >
+          ×
+        </button>
       </div>
 
       <div className="incident-focus-groups">

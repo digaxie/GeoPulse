@@ -294,6 +294,12 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
     setFocusedSystemMessageId(id)
   }
 
+  function handleDismissFocusedIncident() {
+    clearFocusedIncident()
+    setSelectedAlertId(null)
+    setFocusedSystemMessageId(null)
+  }
+
   const statusLabel = getFeedStatusLabel(feedStatus)
 
   return (
@@ -322,6 +328,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
       {focusedIncidentAlert ? (
         <FocusedAlertIncidentView
           alert={focusedIncidentAlert}
+          onDismiss={handleDismissFocusedIncident}
           onFocusCity={setFocusCoordinate}
           onSelectQueue={promotePendingIncident}
           queueItems={pendingIncidentEntries}

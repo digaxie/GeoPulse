@@ -42,10 +42,12 @@ describe('FocusedAlertIncidentView', () => {
     const user = userEvent.setup()
     const onFocusCity = vi.fn()
     const onSelectQueue = vi.fn()
+    const onDismiss = vi.fn()
 
     render(
       <FocusedAlertIncidentView
         alert={focusedAlert}
+        onDismiss={onDismiss}
         onFocusCity={onFocusCity}
         onSelectQueue={onSelectQueue}
         queueItems={[
@@ -76,5 +78,8 @@ describe('FocusedAlertIncidentView', () => {
 
     await user.click(screen.getByRole('button', { name: /Roket/i }))
     expect(onSelectQueue).toHaveBeenCalledWith(queuedAlert.id)
+
+    await user.click(screen.getByRole('button', { name: 'Incelenen alarm panelini kapat' }))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
   })
 })
