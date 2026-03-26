@@ -162,8 +162,9 @@ export function AlertDrawer({
     }
   }, [])
 
+  const hasSelectedKey = selectedKey !== null && items.some((item) => item.key === selectedKey)
   const effectiveSelectedKey =
-    selectedKey ??
+    (hasSelectedKey ? selectedKey : null) ??
     (localSelectedKey && items.some((item) => item.key === localSelectedKey)
       ? localSelectedKey
       : (items[0]?.key ?? null))
@@ -227,13 +228,23 @@ export function AlertDrawer({
                 className={`alert-drawer-card alert-drawer-card-${color}${isSelected ? ' alert-drawer-card-selected' : ''}${item.isLive ? ' alert-drawer-card-live' : ''}`}
                 key={item.key}
               >
-                <button
+                <div
                   className="alert-drawer-card-button"
                   onClick={() => {
                     setLocalSelectedKey(item.key)
                     onSelectItem(item.key)
                   }}
-                  type="button"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                      return
+                    }
+
+                    event.preventDefault()
+                    setLocalSelectedKey(item.key)
+                    onSelectItem(item.key)
+                  }}
+                  role="button"
+                  tabIndex={0}
                 >
                   <div className="alert-drawer-card-main">
                     <strong className="alert-drawer-card-title">{getCardTitle(item)}</strong>
@@ -245,7 +256,7 @@ export function AlertDrawer({
                   <span className="alert-drawer-card-icon" aria-hidden="true">
                     {icon}
                   </span>
-                </button>
+                </div>
 
                 {isSelected ? (
                   <div className="alert-drawer-card-expanded">
