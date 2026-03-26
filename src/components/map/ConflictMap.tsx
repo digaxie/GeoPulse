@@ -351,10 +351,6 @@ function usesOpenFreeMapBasemap(preset: BasemapPreset) {
 }
 
 
-function usesLiveBasemap(preset: BasemapPreset) {
-  return preset === 'osm_standard' || preset === 'osm_humanitarian' || preset === 'open_topo'
-}
-
 function usesHgmBasemap(preset: BasemapPreset) {
   return (
     preset === 'hgm_temel' ||
@@ -363,10 +359,6 @@ function usesHgmBasemap(preset: BasemapPreset) {
     preset === 'hgm_yukseklik' ||
     preset === 'hgm_uydu'
   )
-}
-
-function usesRasterBasemap(preset: BasemapPreset) {
-  return usesLiveBasemap(preset) || usesHgmBasemap(preset)
 }
 
 function getHgmTileUrl(preset: BasemapPreset, apiKey: string) {
@@ -2253,14 +2245,13 @@ export function ConflictMap({
 
   useEffect(() => {
     const deFactoPreset = usesDeFactoLayers(basemap.preset)
-    const livePreset = usesRasterBasemap(basemap.preset)
     const hgmPreset = appEnv.useHgmAtlas && usesHgmBasemap(basemap.preset)
     const openFreeMapPreset = usesOpenFreeMapBasemap(basemap.preset)
     countriesLayerRef.current?.setVisible(deFactoPreset)
     admin1LayerRef.current?.setVisible(deFactoPreset)
     cityLayerRef.current?.setVisible(deFactoPreset)
     disputedLayerRef.current?.setVisible(deFactoPreset)
-    liveWashLayerRef.current?.setVisible(livePreset || hgmPreset)
+    liveWashLayerRef.current?.setVisible(false)
     openFreeMapGroupRef.current?.setVisible(openFreeMapPreset)
     osmStandardLayerRef.current?.setVisible(basemap.preset === 'osm_standard')
     osmHumanitarianLayerRef.current?.setVisible(
@@ -2440,7 +2431,7 @@ export function ConflictMap({
     })
     const liveWashLayer = new VectorLayer({
       source: liveWashSource,
-      visible: usesRasterBasemap(basemapRef.current.preset),
+      visible: false,
       style: () =>
         new Style({
           fill: new Fill({
