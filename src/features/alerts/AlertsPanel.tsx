@@ -2,18 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 
 import {
   DEFAULT_SCENARIO_ALERT_SETTINGS,
-  type AlertFeedStatus,
-  type AlertFeedTransport,
-  formatAlertOccurredAtTr,
   formatAlertShelterInstruction,
-  getAlertAgeMinutes,
+  formatTimelineDualTime,
   getAlertTypeLabel,
-  type RocketAlert,
+  getTimelineItemColor,
+  getTimelineItemIcon,
+  type AlertCityDetail,
+  type TimelineItem,
 } from '@/features/alerts/types'
+import type { EnrichedCity, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 import { useScenarioStore } from '@/features/scenario/store'
 
-function getFeedStatusLabel(status: AlertFeedStatus) {
+function getFeedStatusLabel(status: string) {
   switch (status) {
     case 'connecting':
       return 'bağlanıyor'
@@ -42,65 +43,149 @@ const BANNER_DISMISS_OPTIONS = [
   { value: 120, label: '2 dk' },
 ] as const
 
-function getFeedTransportLabel(transport: AlertFeedTransport) {
-  switch (transport) {
-    case 'stream':
-      return 'canlı akış'
-    case 'polling':
-      return 'yedek polling'
-    default:
-      return 'hazır'
+function normalizeCityChip(city: AlertCityDetail | EnrichedCity) {
+  if ('name' in city) {
+    return { name: city.name, lat: city.lat, lon: city.lon }
   }
+  return { name: city.en || city.he, lat: city.lat, lon: city.lng }
+}
+
+const CHIP_PREVIEW_LIMIT = 5
+
+function CityChips({
+  cities,
+  color,
+  onFocus,
+}: {
+  cities: (AlertCityDetail | EnrichedCity)[]
+  color: string
+  onFocus: (coord: { lat: number; lon: number; name: string }) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visibleCities = expanded ? cities : cities.slice(0, CHIP_PREVIEW_LIMIT)
+  const hasMore = cities.length > CHIP_PREVIEW_LIMIT
+
+  return (
+    <div className="alerts-city-chips">
+      {visibleCities.map((city, i) => {
+        const { name, lat, lon } = normalizeCityChip(city)
+        const hasCoord = lat != null && lon != null && lat !== 0 && lon !== 0
+        return (
+          <button
+            key={`${name}-${i}`}
+            className={`alerts-city-chip alerts-city-chip-${color}`}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (hasCoord) onFocus({ lat: lat!, lon: lon!, name })
+            }}
+            style={hasCoord ? undefined : { cursor: 'default', opacity: 0.5 }}
+          >
+            {name}
+          </button>
+        )
+      })}
+      {hasMore && !expanded && (
+        <button
+          className="alerts-city-chip alerts-city-chip-more"
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setExpanded(true) }}
+        >
+          +{cities.length - CHIP_PREVIEW_LIMIT} daha
+        </button>
+      )}
+    </div>
+  )
+}
+
+function TimelineCard({
+  item,
+  now,
+  active,
+  onSelect,
+  onSelectSystem,
+  onFocusCity,
+}: {
+  item: TimelineItem
+  now: number
+  active: boolean
+  onSelect: (id: string | null) => void
+  onSelectSystem: (id: number | null) => void
+  onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
+}) {
+  const color = getTimelineItemColor(item)
+  const icon = getTimelineItemIcon(item)
+
+  if (item.kind === 'alert') {
+    const alert = item.alert
+    const cities = alert.citiesDetail
+    return (
+      <div className="alerts-card-wrapper">
+        <button
+          className={`alerts-card alerts-card-${color}${active ? ' alerts-card-active' : ''}${item.isActive ? ' alerts-card-live' : ''}`}
+          onClick={() => onSelect(alert.id)}
+          type="button"
+        >
+          <div className="alerts-card-body">
+            <strong className="alerts-card-title">{alert.englishName}</strong>
+            <span className="alerts-card-time">{formatTimelineDualTime(alert.occurredAtMs, now)}</span>
+            <span className="alerts-card-area">
+              {getAlertTypeLabel(alert.alertTypeId)} · {formatAlertShelterInstruction(alert.countdownSec)}
+            </span>
+          </div>
+          <span className="alerts-card-icon">{icon}</span>
+        </button>
+        {cities && cities.length > 1 && (
+          <CityChips cities={cities} color={color} onFocus={onFocusCity} />
+        )}
+      </div>
+    )
+  }
+
+  const msg = item.message
+  const title = msg.titleEn || msg.titleHe || 'Sistem Mesajı'
+  const body = msg.bodyEn || msg.bodyHe
+  const hasCities = msg.citiesEnriched && msg.citiesEnriched.length > 0
+
+  return (
+    <div className="alerts-card-wrapper">
+      <button
+        className={`alerts-card alerts-card-${color}${active ? ' alerts-card-active' : ''}`}
+        onClick={() => hasCities ? onSelectSystem(msg.id) : undefined}
+        type="button"
+        style={hasCities ? undefined : { cursor: 'default' }}
+      >
+        <div className="alerts-card-body">
+          <strong className="alerts-card-title">{title}</strong>
+          <span className="alerts-card-time">{formatTimelineDualTime(msg.receivedAtMs, now)}</span>
+          {body && <span className="alerts-card-area">{body}</span>}
+        </div>
+        <span className="alerts-card-icon">{icon}</span>
+      </button>
+      {hasCities && (
+        <CityChips cities={msg.citiesEnriched!} color={color} onFocus={onFocusCity} />
+      )}
+    </div>
+  )
 }
 
 type AlertsPanelProps = {
   canToggle?: boolean
 }
 
-function AlertListItem({
-  alert,
-  now,
-  active,
-  onSelect,
-}: {
-  alert: RocketAlert
-  now: number
-  active: boolean
-  onSelect: (alertId: string) => void
-}) {
-  return (
-    <button
-      className={`alerts-item${active ? ' alerts-item-active' : ''}`}
-      onClick={() => onSelect(alert.id)}
-      type="button"
-    >
-      <div className="alerts-item-title">
-        <strong>{alert.englishName}</strong>
-        <span>{getAlertTypeLabel(alert.alertTypeId)}</span>
-      </div>
-      <div className="alerts-item-meta">
-        <span>{alert.areaNameEn || 'Bölge bilgisi yok'}</span>
-        <span>{formatAlertShelterInstruction(alert.countdownSec)}</span>
-      </div>
-      <div className="alerts-item-meta">
-        <span>{getAlertAgeMinutes(alert, now)} dk önce</span>
-        <span>{formatAlertOccurredAtTr(alert)}</span>
-      </div>
-    </button>
-  )
-}
-
 export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const alerts = useAlertStore((state) => state.alerts)
   const historyAlerts = useAlertStore((state) => state.historyAlerts)
+  const systemMessages = useAlertStore((state) => state.systemMessages)
   const feedStatus = useAlertStore((state) => state.feedStatus)
-  const feedTransport = useAlertStore((state) => state.feedTransport)
-  const lastFetchedAt = useAlertStore((state) => state.lastFetchedAt)
   const selectedAlertId = useAlertStore((state) => state.selectedAlertId)
-  const retentionMs = useAlertStore((state) => state.retentionMs)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
+  const focusedSystemMessageId = useAlertStore((state) => state.focusedSystemMessageId)
+  const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
+  const retentionMs = useAlertStore((state) => state.retentionMs)
   const setRetentionMs = useAlertStore((state) => state.setRetentionMs)
   const dismissCurrentAlerts = useAlertStore((state) => state.dismissCurrentAlerts)
+  const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
   const alertSettings = useScenarioStore((state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS)
   const setAlertsEnabled = useScenarioStore((state) => state.setAlertsEnabled)
   const setAlertAutoZoomEnabled = useScenarioStore((state) => state.setAlertAutoZoomEnabled)
@@ -126,24 +211,35 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
     }
   }, [alerts.length, enabled, historyAlerts.length])
 
-  const orderedAlerts = useMemo(() => alerts.slice(0, 12), [alerts])
-  const orderedHistoryAlerts = useMemo(() => historyAlerts.slice(0, 250), [historyAlerts])
-  const statusLabel = getFeedStatusLabel(feedStatus)
-  const lastFetchedText = useMemo(() => {
-    if (!lastFetchedAt) {
-      return 'Son veri henüz yok'
+  const timeline = useMemo(() => {
+    const activeIds = new Set(alerts.map((a) => a.id))
+    const items: TimelineItem[] = []
+
+    for (const alert of historyAlerts) {
+      items.push({
+        kind: 'alert',
+        alert,
+        timestampMs: alert.occurredAtMs,
+        isActive: activeIds.has(alert.id),
+      })
     }
 
-    const seconds = Math.max(0, Math.round((now - lastFetchedAt) / 1000))
-    return `Son güncelleme ${seconds} sn önce`
-  }, [lastFetchedAt, now])
+    for (const msg of systemMessages) {
+      items.push({ kind: 'system', message: msg as TzevaadomSystemMessage, timestampMs: msg.receivedAtMs })
+    }
+
+    items.sort((a, b) => b.timestampMs - a.timestampMs)
+    return items.slice(0, 300)
+  }, [historyAlerts, systemMessages, alerts])
+
+  const statusLabel = getFeedStatusLabel(feedStatus)
 
   return (
     <div className="alerts-panel">
       <div className="version-panel-header alerts-panel-header">
         <div>
           <p className="eyebrow">Canlı feed</p>
-          <h3>İsrail Alarmları</h3>
+          <h3>Tzeva Adom</h3>
         </div>
         <button
           className={`secondary-button alerts-toggle-button${enabled ? ' secondary-button-active' : ''}`}
@@ -157,11 +253,9 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
 
       <div className="alerts-status-row">
         <span className={`alerts-status-chip alerts-status-chip-${feedStatus}`}>{statusLabel}</span>
-        {enabled ? <span className="alerts-transport-badge">{getFeedTransportLabel(feedTransport)}</span> : null}
-        <span className="alerts-count-badge">{alerts.length} alarm</span>
+        <span className="alerts-count-badge">{alerts.length} aktif</span>
+        <span className="alerts-count-badge">{timeline.length} kayıt</span>
       </div>
-
-      <p className="alerts-status-note">{lastFetchedText}</p>
 
       <div className="alerts-audio-controls">
         <label className="alerts-audio-toggle alerts-inline-toggle">
@@ -228,27 +322,6 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
 
         <label className="alerts-volume-control">
           <span>
-            Noktalar ekranda{' '}
-            {ALERT_RETENTION_OPTIONS.find((option) => option.value === retentionMs)?.label ??
-              `${Math.round(retentionMs / 1000)} sn`}{' '}
-            kalır
-          </span>
-          <select
-            className="panel-input panel-select"
-            disabled={!canToggle || !enabled}
-            onChange={(event) => setRetentionMs(Number(event.target.value))}
-            value={retentionMs}
-          >
-            {ALERT_RETENTION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="alerts-volume-control">
-          <span>
             Bildirimler{' '}
             {BANNER_DISMISS_OPTIONS.find((o) => o.value === alertSettings.bannerAutoDismissSec)?.label ??
               `${alertSettings.bannerAutoDismissSec} sn`}{' '}
@@ -261,6 +334,27 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
             value={alertSettings.bannerAutoDismissSec}
           >
             {BANNER_DISMISS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="alerts-volume-control">
+          <span>
+            Noktalar ekranda{' '}
+            {ALERT_RETENTION_OPTIONS.find((o) => o.value === retentionMs)?.label ??
+              `${Math.round(retentionMs / 1000)} sn`}{' '}
+            kalır
+          </span>
+          <select
+            className="panel-input panel-select"
+            disabled={!canToggle || !enabled}
+            onChange={(event) => setRetentionMs(Number(event.target.value))}
+            value={retentionMs}
+          >
+            {ALERT_RETENTION_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -281,55 +375,27 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
       {!enabled ? (
         <p className="panel-empty">Canlı alarmları görmek için feed&apos;i aç.</p>
       ) : (
-        <>
-          <section className="alerts-section">
-            <div className="alerts-section-header">
-              <h4>Aktif alarmlar</h4>
-              <span>{alerts.length}</span>
+        <section className="alerts-section">
+          <div className="alerts-section-header">
+            <h4>Son 24 Saat</h4>
+            <span>{timeline.length}</span>
+          </div>
+          {timeline.length === 0 ? (
+            <p className="panel-empty">Henüz kayıt yok.</p>
+          ) : (
+            <div className="alerts-list alerts-timeline-list">
+              {timeline.map((item) => {
+                const key = item.kind === 'alert' ? item.alert.id : `sys-${item.message.id}-${item.message.type}`
+                const isSelected = item.kind === 'alert'
+                  ? selectedAlertId === item.alert.id
+                  : focusedSystemMessageId === item.message.id
+                return (
+                  <TimelineCard key={key} item={item} now={now} active={isSelected} onSelect={(id) => { setFocusedSystemMessageId(null); setSelectedAlertId(id) }} onSelectSystem={(id) => { setSelectedAlertId(null); setFocusedSystemMessageId(id) }} onFocusCity={setFocusCoordinate} />
+                )
+              })}
             </div>
-            {orderedAlerts.length === 0 ? (
-              <p className="panel-empty">
-                {feedStatus === 'error'
-                  ? 'Feed hatada. Son veri bekleniyor.'
-                  : 'Şu anda aktif alarm görünmüyor.'}
-              </p>
-            ) : (
-              <div className="alerts-list">
-                {orderedAlerts.map((alert) => (
-                  <AlertListItem
-                    active={selectedAlertId === alert.id}
-                    alert={alert}
-                    key={alert.id}
-                    now={now}
-                    onSelect={setSelectedAlertId}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="alerts-section">
-            <div className="alerts-section-header">
-              <h4>Son 24 Saat</h4>
-              <span>{orderedHistoryAlerts.length}</span>
-            </div>
-            {orderedHistoryAlerts.length === 0 ? (
-              <p className="panel-empty">Son 24 saate ait alarm geçmişi henüz yüklenmedi.</p>
-            ) : (
-              <div className="alerts-list alerts-history-list">
-                {orderedHistoryAlerts.map((alert) => (
-                  <AlertListItem
-                    active={selectedAlertId === alert.id}
-                    alert={alert}
-                    key={alert.id}
-                    now={now}
-                    onSelect={setSelectedAlertId}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+          )}
+        </section>
       )}
     </div>
   )

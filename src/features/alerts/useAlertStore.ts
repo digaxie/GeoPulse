@@ -12,8 +12,8 @@ import {
 } from '@/features/alerts/types'
 import type { TzevaadomConnectionStatus, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 
-const MAX_SYSTEM_MESSAGES = 20
-const SYSTEM_MESSAGE_RETENTION_MS = 30 * 60 * 1000 // 30 min
+const MAX_SYSTEM_MESSAGES = 200
+const SYSTEM_MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 type AlertStore = {
   alerts: RocketAlert[]
@@ -26,6 +26,8 @@ type AlertStore = {
   retentionMs: number
   tzevaadomStatus: TzevaadomConnectionStatus
   systemMessages: TzevaadomSystemMessage[]
+  focusedSystemMessageId: number | null
+  focusCoordinate: { lat: number; lon: number; name: string } | null
   setAlerts: (alerts: RocketAlert[], fetchedAt?: number | null) => void
   setHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
   mergeHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
@@ -40,6 +42,9 @@ type AlertStore = {
   addSystemMessage: (message: TzevaadomSystemMessage) => void
   dismissSystemMessage: (id: number) => void
   clearSystemMessages: () => void
+  setFocusedSystemMessageId: (id: number | null) => void
+  setFocusCoordinate: (coord: { lat: number; lon: number; name: string } | null) => void
+  focusTrigger: number
 }
 
 function sortAlertsByNewest(alerts: RocketAlert[]) {
@@ -120,6 +125,9 @@ export const useAlertStore = create<AlertStore>((set) => ({
   retentionMs: DEFAULT_ALERT_RETENTION_MS,
   tzevaadomStatus: 'disconnected',
   systemMessages: [],
+  focusedSystemMessageId: null,
+  focusCoordinate: null,
+  focusTrigger: 0,
 
   setAlerts(alerts, fetchedAt = null) {
     set((current) => {
@@ -274,11 +282,21 @@ export const useAlertStore = create<AlertStore>((set) => ({
 
   dismissSystemMessage(id) {
     set((current) => ({
-      systemMessages: current.systemMessages.filter((m) => m.id !== id),
+      systemMessages: current.systemMessages.map((m) =>
+        m.id === id ? { ...m, dismissed: true } : m,
+      ),
     }))
   },
 
   clearSystemMessages() {
-    set({ systemMessages: [] })
+    set({ systemMessages: [], focusedSystemMessageId: null })
+  },
+
+  setFocusedSystemMessageId(id) {
+    set((current) => (current.focusedSystemMessageId === id ? current : { focusedSystemMessageId: id, selectedAlertId: id === null ? current.selectedAlertId : null }))
+  },
+
+  setFocusCoordinate(coord) {
+    set((current) => ({ focusCoordinate: coord, focusTrigger: current.focusTrigger + 1 }))
   },
 }))

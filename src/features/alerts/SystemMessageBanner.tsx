@@ -43,11 +43,14 @@ export function SystemMessageBanner() {
   )
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
+  // Banner'da sadece dismissed olmayan mesajları göster
+  const visibleMessages = systemMessages.filter((m) => !m.dismissed)
+
   useEffect(() => {
     const timers = timersRef.current
     const dismissMs = bannerAutoDismissSec * 1000
 
-    for (const msg of systemMessages) {
+    for (const msg of visibleMessages) {
       const key = `${msg.id}-${msg.type}-${msg.receivedAtMs}`
       if (timers.has(key)) continue
 
@@ -64,12 +67,12 @@ export function SystemMessageBanner() {
       timers.set(key, timerId)
     }
 
-    // Cleanup timers for messages that were manually dismissed
+    // Cleanup timers for messages that were dismissed
     for (const [key, timerId] of timers) {
-      const stillExists = systemMessages.some(
+      const stillVisible = visibleMessages.some(
         (m) => `${m.id}-${m.type}-${m.receivedAtMs}` === key,
       )
-      if (!stillExists) {
+      if (!stillVisible) {
         clearTimeout(timerId)
         timers.delete(key)
       }
@@ -81,13 +84,13 @@ export function SystemMessageBanner() {
       }
       timers.clear()
     }
-  }, [systemMessages, bannerAutoDismissSec, dismissSystemMessage])
+  }, [visibleMessages, bannerAutoDismissSec, dismissSystemMessage])
 
-  if (systemMessages.length === 0) return null
+  if (visibleMessages.length === 0) return null
 
   return (
     <div className="system-message-banner-container">
-      {systemMessages.map((msg) => (
+      {visibleMessages.map((msg) => (
         <MessageItem
           key={`${msg.id}-${msg.type}-${msg.receivedAtMs}`}
           message={msg}

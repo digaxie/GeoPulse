@@ -44,9 +44,9 @@ import {
   type WorldSources,
 } from '@/components/map/conflictMapScene'
 import { createAlertLayer, type AlertBindings } from '@/features/alerts/AlertMapLayer'
-import { createAlertFeed, fetchRocketAlertHistory } from '@/features/alerts/alertService'
 import {
   type AlertAudioRole,
+  type AlertFeedStatus,
   DEFAULT_SCENARIO_ALERT_SETTINGS,
   formatAlertOccurredAtTr,
   formatAlertShelterInstruction,
@@ -57,7 +57,12 @@ import {
   type RocketAlert,
 } from '@/features/alerts/types'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
-import { createTzevaadomFeed, getThreatLabel } from '@/features/alerts/tzevaadomService'
+import {
+  createTzevaadomFeed,
+  fetchTzevaadomHistory,
+  getThreatLabel,
+  getTzevaadomAlertInstanceId,
+} from '@/features/alerts/tzevaadomService'
 import { toUploadedAssetSnapshot } from '@/features/assets/assetSnapshots'
 import { findSeedAssetById } from '@/features/assets/seedAssets'
 import { createMissileLayer, type MissileBindings } from '@/features/missiles/MissileMapLayer'
@@ -78,6 +83,7 @@ import {
 } from '@/features/scenario/scenes'
 import { useScenarioStore } from '@/features/scenario/store'
 import type { ScenarioAssetElement, ScenarioDocument, ScenarioElement } from '@/features/scenario/model'
+import { publicViewerSupabase } from '@/lib/backend/supabaseBackend'
 import type { AssetDefinition } from '@/lib/backend/types'
 import { appEnv } from '@/lib/env'
 import { getOpenFreeMapStyleUrl, isOpenFreeMapPreset } from '@/lib/openfreemap'
@@ -896,11 +902,13 @@ export function ConflictMap({
   const setAlertStoreAlerts = useAlertStore((state) => state.setAlerts)
   const mergeAlertHistoryIntoStore = useAlertStore((state) => state.mergeHistoryAlerts)
   const pruneAlertHistory = useAlertStore((state) => state.pruneHistoryAlerts)
-  const alertRetentionMs = useAlertStore((state) => state.retentionMs)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
   const addSystemMessage = useAlertStore((state) => state.addSystemMessage)
+  const focusedSystemMessageId = useAlertStore((state) => state.focusedSystemMessageId)
+  const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
+  const systemMessages = useAlertStore((state) => state.systemMessages)
   const alertSettings = useScenarioStore((state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS)
   const alertsEnabled = alertSettings.enabled
   const alertAutoZoomEnabled = alertSettings.autoZoomEnabled
@@ -1006,7 +1014,6 @@ export function ConflictMap({
   const alertAutoZoomMutedUntilRef = useRef(0)
   const pendingAlertAutoZoomRef = useRef<RocketAlert[]>([])
   const alertSkipSelectedFocusOnceRef = useRef(false)
-  const alertHistoryFetchControllerRef = useRef<AbortController | null>(null)
   const openFreeMapStyleUrlRef = useRef<string | null>(null)
   const openFreeMapRequestIdRef = useRef(0)
   const shownMissileRangeIdsRef = useRef<Map<string, string>>(new Map())
@@ -1107,23 +1114,33 @@ export function ConflictMap({
         return
       }
 
-      alertSkipSelectedFocusOnceRef.current = true
       focusedAlertIdRef.current = newestAlert.id
-      setSelectedAlertId(newestAlert.id)
 
-      if (sortedIncomingAlerts.length === 1) {
+      // citiesDetail varsa tüm şehirlerin koordinatlarını topla
+      const allPoints: [number, number][] = []
+      for (const alert of sortedIncomingAlerts) {
+        if (alert.citiesDetail && alert.citiesDetail.length > 0) {
+          for (const city of alert.citiesDetail) {
+            if (city.lat !== 0 || city.lon !== 0) allPoints.push([city.lon, city.lat])
+          }
+        } else if (alert.lat !== 0 || alert.lon !== 0) {
+          allPoints.push([alert.lon, alert.lat])
+        }
+      }
+
+      if (allPoints.length === 0) return
+
+      if (allPoints.length === 1) {
         const currentZoom = view.getZoom() ?? documentViewport.zoom
         view.animate({
-          center: fromLonLat([newestAlert.lon, newestAlert.lat]),
+          center: fromLonLat(allPoints[0]),
           zoom: Math.max(currentZoom, 7.5),
           duration: 450,
         })
         return
       }
 
-      const extent = boundingExtent(
-        sortedIncomingAlerts.map((alert) => fromLonLat([alert.lon, alert.lat])),
-      )
+      const extent = boundingExtent(allPoints.map((p) => fromLonLat(p)))
       view.fit(extent, {
         duration: 500,
         maxZoom: 8.5,
@@ -1159,28 +1176,7 @@ export function ConflictMap({
     applyAlertBatchFocus(incomingAlerts)
   })
 
-  const refreshAlertHistory = useEffectEvent(async () => {
-    alertHistoryFetchControllerRef.current?.abort()
-    const controller = new AbortController()
-    alertHistoryFetchControllerRef.current = controller
-
-    try {
-      const result = await fetchRocketAlertHistory(controller.signal)
-      if (alertHistoryFetchControllerRef.current !== controller) {
-        return
-      }
-
-      mergeAlertHistoryIntoStore(result.alerts, result.fetchedAtMs)
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        log.warn('Alert history yuklenemedi', { action: 'refreshAlertHistory' })
-      }
-    } finally {
-      if (alertHistoryFetchControllerRef.current === controller) {
-        alertHistoryFetchControllerRef.current = null
-      }
-    }
-  })
+  // refreshAlertHistory removed — Tzeva Adom relay handles history via Supabase
 
   const setAudioUnlockState = useCallback((nextState: AlertAudioUnlockState) => {
     alertAudioUnlockStateRef.current = nextState
@@ -1360,8 +1356,6 @@ export function ConflictMap({
 
   useEffect(() => {
     if (!alertsEnabled) {
-      alertHistoryFetchControllerRef.current?.abort()
-      alertHistoryFetchControllerRef.current = null
       clearAlertStore()
       stopAlertSiren()
       setSelectedAlertId(null)
@@ -1369,52 +1363,11 @@ export function ConflictMap({
       setAlertFeedTransport('none')
       return
     }
-
-    const feed = createAlertFeed({
-      retentionMs: alertRetentionMs,
-      onAlerts: (nextAlerts, context) => {
-        const shouldPlaySiren =
-          (context.reason === 'stream' || context.reason === 'resync') && context.newAlerts.length > 0
-
-        if (context.newAlerts.length > 0) {
-          mergeAlertHistoryIntoStore(context.newAlerts, context.fetchedAtMs ?? Date.now())
-        }
-
-        if (shouldPlaySiren) {
-          playAlertSiren()
-        }
-
-        if (
-          alertAutoZoomEnabled &&
-          (context.reason === 'stream' || context.reason === 'polling') &&
-          context.newAlerts.length > 0
-        ) {
-          focusAlertBatch(context.newAlerts)
-        }
-
-        setAlertStoreAlerts(nextAlerts, context.fetchedAtMs)
-      },
-      onStatusChange: setAlertFeedStatus,
-      onTransportChange: setAlertFeedTransport,
-    })
-
-    feed.start()
-    void refreshAlertHistory()
-    return () => {
-      feed.stop()
-      alertHistoryFetchControllerRef.current?.abort()
-      alertHistoryFetchControllerRef.current = null
-    }
   }, [
-    alertAutoZoomEnabled,
-    alertRetentionMs,
     alertsEnabled,
     clearAlertStore,
-    mergeAlertHistoryIntoStore,
-    playAlertSiren,
     setAlertFeedStatus,
     setAlertFeedTransport,
-    setAlertStoreAlerts,
     setSelectedAlertId,
     stopAlertSiren,
   ])
@@ -1429,7 +1382,6 @@ export function ConflictMap({
         return
       }
 
-      void refreshAlertHistory()
       flushPendingAlertAutoZoom()
     }
 
@@ -1470,18 +1422,45 @@ export function ConflictMap({
       onAlert: (tzAlert) => {
         log.debug('Tzeva Adom alert', { cities: tzAlert.cities, threat: tzAlert.threat })
         const threatLabel = getThreatLabel(tzAlert.threat)
-        const citiesList = tzAlert.cities.length > 0 ? tzAlert.cities.join(', ') : 'Bilinmeyen bölge'
-        addSystemMessage({
-          id: Date.now(),
-          time: new Date(tzAlert.time * 1000).toISOString(),
-          type: 'alert',
-          titleEn: `${tzAlert.isDrill ? '[TATBIKAT] ' : ''}${threatLabel}`,
-          titleHe: '',
-          bodyEn: '',
-          bodyHe: `Hedef bölge: ${citiesList}`,
-          bodyAr: '',
-          receivedAtMs: Date.now(),
-        })
+        const enriched = tzAlert.citiesEnriched ?? []
+        const citiesEn = enriched.length > 0
+          ? enriched.map((c) => c.en).join(', ')
+          : tzAlert.cities.join(', ') || 'Bilinmeyen bölge'
+        const firstWithCoord = enriched.find((c) => c.lat != null && c.lng != null)
+
+        // Her şehrin ayrı koordinatını sakla (haritada ayrı pin için)
+        const citiesDetail = enriched
+          .filter((c) => c.lat != null && c.lng != null)
+          .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng!, zone: c.zone_en || '', countdown: c.countdown ?? 0 }))
+        const alertId = getTzevaadomAlertInstanceId(tzAlert)
+
+        const rocketAlert: RocketAlert = {
+          id: alertId,
+          name: `${tzAlert.isDrill ? '[TATBIKAT] ' : ''}${threatLabel}`,
+          englishName: citiesEn,
+          lat: firstWithCoord?.lat ?? 0,
+          lon: firstWithCoord?.lng ?? 0,
+          alertTypeId: (tzAlert.threat === 5 ? 2 : 1) as 1 | 2,
+          countdownSec: firstWithCoord?.countdown ?? 0,
+          areaNameEn: firstWithCoord?.zone_en ?? citiesEn,
+          timeStampRaw: new Date(tzAlert.time * 1000).toISOString(),
+          occurredAtMs: tzAlert.time * 1000,
+          fetchedAtMs: Date.now(),
+          taCityId: null,
+          citiesDetail: citiesDetail.length > 0 ? citiesDetail : undefined,
+        }
+        mergeAlertHistoryIntoStore([rocketAlert])
+        const currentAlerts = useAlertStore.getState().alerts
+        const merged = [...currentAlerts.filter((a) => a.id !== rocketAlert.id), rocketAlert]
+        setAlertStoreAlerts(merged, Date.now())
+
+        // Siren çal
+        playAlertSiren()
+
+        // Auto-zoom
+        if (alertAutoZoomEnabled && firstWithCoord) {
+          focusAlertBatch([rocketAlert])
+        }
       },
       onSystemMessage: (message) => {
         log.info('Tzeva Adom system message', {
@@ -1489,12 +1468,66 @@ export function ConflictMap({
           titleEn: message.titleEn,
           bodyEn: message.bodyEn,
         })
-        addSystemMessage(message)
+        // Sadece incident_ended ve early_warning göster, unknown/diğerlerini atla
+        if (message.type === 'incident_ended' || message.type === 'early_warning') {
+          addSystemMessage(message)
+        }
       },
       onStatusChange: (status) => {
         setTzevaadomStatus(status)
+        // Feed status'u ana alarm paneline de yansıt
+        const statusMap: Record<string, AlertFeedStatus> = {
+          connected: 'live',
+          connecting: 'connecting',
+          error: 'error',
+          disconnected: 'disconnected',
+        }
+        setAlertFeedStatus(statusMap[status] ?? 'disconnected')
+        if (status === 'connected') setAlertFeedTransport('stream')
       },
     })
+
+    // Supabase'den son 24 saatteki geçmiş alertleri çek
+    if (publicViewerSupabase) {
+      fetchTzevaadomHistory(publicViewerSupabase, 24).then(({ alerts: histAlerts, systemMessages: histMsgs }) => {
+        const asRocketAlerts = histAlerts.map((a) => {
+          const threatLabel = getThreatLabel(a.threat)
+          const enriched = a.citiesEnriched ?? []
+          const citiesEn = enriched.length > 0
+            ? enriched.map((c) => c.en).join(', ')
+            : a.cities.join(', ') || 'Bilinmeyen bölge'
+          const firstWithCoord = enriched.find((c) => c.lat != null && c.lng != null)
+          const occurredAtMs = a.time * 1000
+          const citiesDetail = enriched
+            .filter((c) => c.lat != null && c.lng != null)
+            .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng!, zone: c.zone_en || '', countdown: c.countdown ?? 0 }))
+          return {
+            id: getTzevaadomAlertInstanceId(a),
+            name: `${a.isDrill ? '[TATBIKAT] ' : ''}${threatLabel}`,
+            englishName: citiesEn,
+            lat: firstWithCoord?.lat ?? 0,
+            lon: firstWithCoord?.lng ?? 0,
+            alertTypeId: (a.threat === 5 ? 2 : 1) as 1 | 2,
+            countdownSec: firstWithCoord?.countdown ?? 0,
+            areaNameEn: firstWithCoord?.zone_en ?? citiesEn,
+            timeStampRaw: new Date(occurredAtMs).toISOString(),
+            occurredAtMs,
+            fetchedAtMs: occurredAtMs,
+            taCityId: null,
+            citiesDetail: citiesDetail.length > 0 ? citiesDetail : undefined,
+          }
+        })
+        if (asRocketAlerts.length > 0) {
+          mergeAlertHistoryIntoStore(asRocketAlerts)
+        }
+        // System message'ları (sadece incident_ended ve early_warning) ekle
+        for (const msg of histMsgs) {
+          if (msg.type === 'incident_ended' || msg.type === 'early_warning') {
+            addSystemMessage(msg)
+          }
+        }
+      }).catch(() => { /* ignore */ })
+    }
 
     tzevaadomFeed.start()
     return () => {
@@ -3365,6 +3398,55 @@ export function ConflictMap({
     bindings.setFocusedAlert(alertsEnabled ? selectedAlert : null)
   }, [alertsEnabled, selectedAlert])
 
+  // Early warning / incident_ended tıklanınca şehirlerini haritada göster
+  useEffect(() => {
+    const bindings = alertBindingsRef.current
+    if (!bindings) return
+
+    if (!alertsEnabled || !focusedSystemMessageId) {
+      bindings.setWarningCities(null)
+      return
+    }
+
+    const msg = systemMessages.find((m) => m.id === focusedSystemMessageId)
+    if (!msg?.citiesEnriched || msg.citiesEnriched.length === 0) {
+      bindings.setWarningCities(null)
+      return
+    }
+
+    const cities = msg.citiesEnriched
+      .filter((c) => c.lat != null && c.lng != null)
+      .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng!, zone: c.zone_en || '', countdown: c.countdown ?? 0 }))
+
+    const pinColor = msg.type === 'incident_ended' ? '#16a34a' : '#f59e0b'
+    bindings.setWarningCities(cities, pinColor)
+
+    // Haritayı bu şehirlere zoom yap
+    const map = mapRef.current
+    const view = map?.getView()
+    if (map && view && cities.length > 0) {
+      if (cities.length === 1) {
+        view.animate({ center: fromLonLat([cities[0].lon, cities[0].lat]), zoom: Math.max(view.getZoom() ?? 7, 7.5), duration: 450 })
+      } else {
+        const ext = boundingExtent(cities.map((c) => fromLonLat([c.lon, c.lat])))
+        view.fit(ext, { duration: 500, maxZoom: 8.5, padding: [96, 56, 56, 56] })
+      }
+    }
+  }, [alertsEnabled, focusedSystemMessageId, systemMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // City chip click → zoom to coordinate
+  const focusCoordinate = useAlertStore((state) => state.focusCoordinate)
+  const focusTrigger = useAlertStore((state) => state.focusTrigger)
+
+  useEffect(() => {
+    const map = mapRef.current
+    const view = map?.getView()
+    if (!map || !view || !focusCoordinate) return
+
+    const center = fromLonLat([focusCoordinate.lon, focusCoordinate.lat])
+    view.animate({ center, zoom: 11, duration: 400 })
+  }, [focusTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const map = mapRef.current
     const view = map?.getView()
@@ -3765,6 +3847,7 @@ export function ConflictMap({
       ) {
         setInlineTextInput(null)
         setSelectedAlertId(clickedAlertId)
+        setFocusedSystemMessageId(null)
         if (!readOnly && access === 'editor') {
           useScenarioStore.getState().setSelectedElementId(null)
         }
@@ -3773,6 +3856,7 @@ export function ConflictMap({
 
       if (readOnly || access !== 'editor') {
         setSelectedAlertId(null)
+        setFocusedSystemMessageId(null)
         return
       }
 
@@ -3790,6 +3874,7 @@ export function ConflictMap({
         if (selectedTool === 'select') {
           setInlineTextInput(null)
           setSelectedAlertId(null)
+          setFocusedSystemMessageId(null)
         }
         return
       }
@@ -3797,6 +3882,7 @@ export function ConflictMap({
       if (selectedTool === 'select') {
         setInlineTextInput(null)
         setSelectedAlertId(null)
+        setFocusedSystemMessageId(null)
         useScenarioStore.getState().setSelectedElementId(null)
         return
       }
@@ -4123,6 +4209,8 @@ export function ConflictMap({
         .filter((summary): summary is MissileHudSummary => summary !== null),
     [missileRuntimeFlights],
   )
+  const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
+
   const selectedAlertSummary = useMemo(() => {
     if (!selectedAlert) {
       return null
@@ -4136,8 +4224,25 @@ export function ConflictMap({
       alertTypeLabel: getAlertTypeLabel(selectedAlert.alertTypeId),
       ageMinutes: getAlertAgeMinutes(selectedAlert, alertNow),
       occurredAtText: formatAlertOccurredAtTr(selectedAlert),
+      citiesDetail: selectedAlert.citiesDetail,
     }
   }, [alertNow, selectedAlert])
+
+  const focusedSystemSummary = useMemo(() => {
+    if (!focusedSystemMessageId) return null
+    const msg = systemMessages.find((m) => m.id === focusedSystemMessageId)
+    if (!msg) return null
+    const cities = msg.citiesEnriched
+      ?.filter((c) => c.lat != null && c.lng != null)
+      .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng! })) ?? []
+    return {
+      title: msg.titleEn || msg.titleHe || 'Sistem Mesajı',
+      body: msg.bodyEn || msg.bodyHe,
+      type: msg.type,
+      cities,
+      chipColor: msg.type === 'incident_ended' ? 'green' : 'orange',
+    }
+  }, [focusedSystemMessageId, systemMessages])
 
   return (
     <div
@@ -4207,10 +4312,47 @@ export function ConflictMap({
               <span>{selectedAlertSummary.alertTypeLabel}</span>
             </div>
             <div className="alert-selection-hud-meta">
-              <span>{selectedAlertSummary.areaNameEn}</span>
               <span>{selectedAlertSummary.shelterText}</span>
               <span>{selectedAlertSummary.ageMinutes} dk önce</span>
               <span>{selectedAlertSummary.occurredAtText}</span>
+            </div>
+            {selectedAlertSummary.citiesDetail && selectedAlertSummary.citiesDetail.length > 1 && (
+              <div className="alert-hud-cities">
+                {selectedAlertSummary.citiesDetail.map((city, i) => (
+                  <button
+                    key={`${city.name}-${i}`}
+                    className="alert-hud-city-chip"
+                    type="button"
+                    onClick={() => setFocusCoordinate({ lat: city.lat, lon: city.lon, name: city.name })}
+                  >
+                    {city.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+        {focusedSystemSummary && focusedSystemSummary.cities.length > 0 ? (
+          <div className={`alert-selection-hud alert-selection-hud-${focusedSystemSummary.chipColor}`}>
+            <div className="alert-selection-hud-title">
+              <strong>{focusedSystemSummary.title}</strong>
+            </div>
+            {focusedSystemSummary.body && (
+              <div className="alert-selection-hud-meta">
+                <span>{focusedSystemSummary.body}</span>
+              </div>
+            )}
+            <div className="alert-hud-cities">
+              {focusedSystemSummary.cities.map((city, i) => (
+                <button
+                  key={`${city.name}-${i}`}
+                  className={`alert-hud-city-chip alert-hud-city-chip-${focusedSystemSummary.chipColor}`}
+                  type="button"
+                  onClick={() => setFocusCoordinate({ lat: city.lat, lon: city.lon, name: city.name })}
+                >
+                  {city.name}
+                </button>
+              ))}
             </div>
           </div>
         ) : null}

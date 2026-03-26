@@ -5,6 +5,9 @@
  * Bu relay, upstream'e Node.js WebSocket ile bağlanır ve local WebSocket server
  * üzerinden tarayıcıya iletir.
  *
+ * Pikud HaOref şehir veritabanını başlangıçta yükler ve her ALERT'teki İbranice
+ * şehir adlarını İngilizce isim + koordinata dönüştürür.
+ *
  * Ayrıca her event'i Supabase'e yazar (24 saatlik geçmiş).
  *
  * Kullanım: node scripts/tzevaadom-relay.cjs
@@ -23,12 +26,105 @@ const LOCAL_PORT = Number(process.env.PORT) || 3001
 const PING_INTERVAL_MS = 55_000
 const RECONNECT_BASE_MS = 2_000
 const RECONNECT_MAX_MS = 30_000
-const PRUNE_INTERVAL_MS = 10 * 60 * 1000 // 10 dakikada bir eski kayıtları temizle
+const PRUNE_INTERVAL_MS = 10 * 60 * 1000
+
+const CITIES_URL = 'https://raw.githubusercontent.com/eladnava/pikud-haoref-api/master/cities.json'
 
 let upstream = null
 let reconnectAttempts = 0
 let pingTimer = null
 const clients = new Set()
+
+// ---------- City Lookup ----------
+
+/** @type {Map<string, {name_en: string, lat: number, lng: number, zone_en: string, countdown: number}>} */
+const cityLookup = new Map()
+
+/** @type {Map<number, {name_he: string, name_en: string, lat: number, lng: number, zone_en: string, countdown: number}>} */
+const cityLookupById = new Map()
+
+async function loadCityDatabase() {
+  try {
+    const response = await fetch(CITIES_URL)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const cities = await response.json()
+
+    for (const city of cities) {
+      if (city.name && city.lat && city.lng) {
+        cityLookup.set(city.name, {
+          name_en: city.name_en || city.name,
+          lat: city.lat,
+          lng: city.lng,
+          zone_en: city.zone_en || '',
+          countdown: city.countdown || 0,
+        })
+      }
+      // value alanı da bazen farklı olabiliyor
+      if (city.value && city.value !== city.name && city.lat && city.lng) {
+        cityLookup.set(city.value, {
+          name_en: city.name_en || city.name,
+          lat: city.lat,
+          lng: city.lng,
+          zone_en: city.zone_en || '',
+          countdown: city.countdown || 0,
+        })
+      }
+      // ID'ye göre de lookup
+      if (typeof city.id === 'number' && city.id > 0 && city.lat && city.lng) {
+        cityLookupById.set(city.id, {
+          name_he: city.name || '',
+          name_en: city.name_en || city.name || '',
+          lat: city.lat,
+          lng: city.lng,
+          zone_en: city.zone_en || '',
+          countdown: city.countdown || 0,
+        })
+      }
+    }
+
+    log('INFO', `Sehir veritabani yuklendi: ${cityLookup.size} bolge (isim), ${cityLookupById.size} bolge (id)`)
+  } catch (err) {
+    log('WARN', `Sehir veritabani yuklenemedi: ${err.message} — Ingilizce ceviri devre disi`)
+  }
+}
+
+function enrichCities(hebrewCities) {
+  if (!Array.isArray(hebrewCities)) return []
+
+  return hebrewCities.map((cityHe) => {
+    const info = cityLookup.get(cityHe)
+    if (info) {
+      return {
+        he: cityHe,
+        en: info.name_en,
+        lat: info.lat,
+        lng: info.lng,
+        zone_en: info.zone_en,
+        countdown: info.countdown,
+      }
+    }
+    return { he: cityHe, en: cityHe, lat: null, lng: null, zone_en: '', countdown: 0 }
+  })
+}
+
+function enrichCitiesByIds(cityIds) {
+  if (!Array.isArray(cityIds)) return []
+
+  return cityIds
+    .map((id) => {
+      const info = cityLookupById.get(id)
+      if (!info) return null
+      return {
+        he: info.name_he,
+        en: info.name_en,
+        lat: info.lat,
+        lng: info.lng,
+        zone_en: info.zone_en,
+        countdown: info.countdown,
+      }
+    })
+    .filter(Boolean)
+}
 
 // ---------- Supabase (opsiyonel) ----------
 
@@ -127,11 +223,53 @@ function connectUpstream() {
 
     try {
       const parsed = JSON.parse(msg)
-      log('DATA', `${parsed.type}`, parsed.data ? { preview: JSON.stringify(parsed.data).substring(0, 120) } : undefined)
 
-      // Supabase'e yaz (ALERT ve SYSTEM_MESSAGE)
-      if (parsed.type === 'ALERT' || parsed.type === 'SYSTEM_MESSAGE') {
-        writeToSupabase(parsed.type, parsed.data)
+      // ALERT mesajlarını zenginleştir
+      if (parsed.type === 'ALERT' && parsed.data && Array.isArray(parsed.data.cities)) {
+        const enrichedCities = enrichCities(parsed.data.cities)
+        parsed.data.citiesEnriched = enrichedCities
+
+        log('DATA', 'ALERT', {
+          cities: enrichedCities.map((c) => c.en).join(', '),
+          threat: parsed.data.threat,
+        })
+
+        // Zenginleştirilmiş veriyi Supabase'e yaz
+        writeToSupabase('ALERT', parsed.data)
+
+        // Zenginleştirilmiş mesajı tarayıcılara gönder
+        broadcast(JSON.stringify(parsed))
+        return
+      }
+
+      if (parsed.type === 'SYSTEM_MESSAGE') {
+        let enriched = []
+
+        // Önce citiesIds ile dene (early_warning genelde bunu kullanır)
+        if (parsed.data && Array.isArray(parsed.data.citiesIds) && parsed.data.citiesIds.length > 0) {
+          enriched = enrichCitiesByIds(parsed.data.citiesIds)
+        }
+
+        // citiesIds yoksa veya boşsa, cities string array'i ile dene (incident_ended genelde bunu kullanır)
+        if (enriched.length === 0 && parsed.data && Array.isArray(parsed.data.cities) && parsed.data.cities.length > 0) {
+          enriched = enrichCities(parsed.data.cities)
+        }
+
+        if (enriched.length > 0) {
+          parsed.data.citiesEnriched = enriched
+          log('DATA', 'SYSTEM_MESSAGE (enriched)', {
+            count: enriched.length,
+            titleEn: parsed.data.titleEn?.substring(0, 60),
+          })
+        } else {
+          log('DATA', 'SYSTEM_MESSAGE', parsed.data ? { preview: JSON.stringify(parsed.data).substring(0, 120) } : undefined)
+        }
+
+        writeToSupabase('SYSTEM_MESSAGE', parsed.data)
+        broadcast(JSON.stringify(parsed))
+        return
+      } else {
+        log('DATA', `${parsed.type}`, parsed.data ? { preview: JSON.stringify(parsed.data).substring(0, 120) } : undefined)
       }
     } catch {
       log('DATA', 'raw message', { length: msg.length })
@@ -182,8 +320,11 @@ function scheduleReconnect() {
 
 const wss = new WebSocketServer({ port: LOCAL_PORT, host: '0.0.0.0' })
 
-wss.on('listening', () => {
+wss.on('listening', async () => {
   log('INFO', `Relay server calisiyor: 0.0.0.0:${LOCAL_PORT}`)
+
+  // Şehir veritabanını yükle, sonra upstream'e bağlan
+  await loadCityDatabase()
   connectUpstream()
 })
 

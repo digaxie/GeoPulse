@@ -30,6 +30,14 @@ export const MAX_ALERT_RETENTION_MS = 5 * 60 * 1000
 export const ALERT_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000
 export const ALERT_HISTORY_LIMIT = 250
 
+export interface AlertCityDetail {
+  name: string
+  lat: number
+  lon: number
+  zone: string
+  countdown: number
+}
+
 export interface RocketAlert {
   id: string
   name: string
@@ -43,6 +51,8 @@ export interface RocketAlert {
   occurredAtMs: number
   fetchedAtMs: number
   taCityId: number | null
+  /** Her şehrin ayrı koordinatı — haritada ayrı pin için */
+  citiesDetail?: AlertCityDetail[]
 }
 
 export const ALERT_RECENT_MS = 5 * 60 * 1000
@@ -98,6 +108,57 @@ export function getAlertAudioSettingsForRole(
   return {
     soundEnabled: settings.presentationSoundEnabled,
     volume: settings.presentationVolume,
+  }
+}
+
+// ---------- Timeline ----------
+
+import type { TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
+
+export type TimelineItem =
+  | { kind: 'alert'; alert: RocketAlert; timestampMs: number; isActive: boolean }
+  | { kind: 'system'; message: TzevaadomSystemMessage; timestampMs: number }
+
+export function formatTimelineDualTime(timestampMs: number, now: number): string {
+  const ageMin = Math.max(0, Math.floor((now - timestampMs) / 60_000))
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(timestampMs)
+  const v = Object.fromEntries(
+    parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]),
+  ) as Record<string, string>
+  return `${ageMin} dk önce | ${v.day}.${v.month}.${v.year} (${v.hour}:${v.minute})`
+}
+
+export function getTimelineItemColor(item: TimelineItem): 'red' | 'green' | 'orange' | 'blue' {
+  if (item.kind === 'alert') return 'red'
+  switch (item.message.type) {
+    case 'incident_ended':
+      return 'green'
+    case 'early_warning':
+      return 'orange'
+    default:
+      return 'blue'
+  }
+}
+
+export function getTimelineItemIcon(item: TimelineItem): string {
+  if (item.kind === 'alert') {
+    return item.alert.alertTypeId === 2 ? '\uD83D\uDEE9' : '\uD83D\uDE80'
+  }
+  switch (item.message.type) {
+    case 'incident_ended':
+      return '\u2705'
+    case 'early_warning':
+      return '\u26A0\uFE0F'
+    default:
+      return '\u2139\uFE0F'
   }
 }
 

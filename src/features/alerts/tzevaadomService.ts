@@ -9,12 +9,22 @@
 
 export type TzevaadomThreatId = 0 | 2 | 5 | 7
 
+export interface EnrichedCity {
+  he: string
+  en: string
+  lat: number | null
+  lng: number | null
+  zone_en: string
+  countdown: number
+}
+
 export interface TzevaadomAlert {
   notificationId: string
   time: number
   threat: TzevaadomThreatId
   isDrill: boolean
   cities: string[]
+  citiesEnriched?: EnrichedCity[]
 }
 
 export type SystemMessageType = 'early_warning' | 'incident_ended' | 'alert' | 'unknown'
@@ -29,6 +39,10 @@ export interface TzevaadomSystemMessage {
   bodyHe: string
   bodyAr: string
   receivedAtMs: number
+  /** Banner'dan kapatıldı — listede kalır ama banner'da gözükmez */
+  dismissed?: boolean
+  /** Zenginleştirilmiş şehir verileri (early_warning/incident_ended için) */
+  citiesEnriched?: EnrichedCity[]
 }
 
 export type TzevaadomConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -73,6 +87,35 @@ export function getThreatLabel(threatId: TzevaadomThreatId): string {
   return THREAT_LABELS[threatId] ?? `Bilinmeyen (${threatId})`
 }
 
+function normalizeAlertCityTokens(alert: Pick<TzevaadomAlert, 'cities' | 'citiesEnriched'>) {
+  const enriched = alert.citiesEnriched ?? []
+  if (enriched.length > 0) {
+    return [...enriched]
+      .map((city) => {
+        const name = (city.en || city.he || '').trim().toLowerCase()
+        const lat = city.lat === null ? 'na' : city.lat.toFixed(5)
+        const lng = city.lng === null ? 'na' : city.lng.toFixed(5)
+        return `${name}:${lat}:${lng}`
+      })
+      .sort()
+  }
+
+  return [...alert.cities]
+    .map((city) => city.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+}
+
+export function getTzevaadomAlertInstanceId(
+  alert: Pick<TzevaadomAlert, 'notificationId' | 'time' | 'threat' | 'isDrill' | 'cities' | 'citiesEnriched'>,
+) {
+  const sourceId = alert.notificationId.trim() || 'no-notification-id'
+  const cityTokens = normalizeAlertCityTokens(alert)
+  const cityKey = cityTokens.length > 0 ? cityTokens.join('|') : 'no-city'
+
+  return `${sourceId}:${alert.time}:${alert.threat}:${alert.isDrill ? 1 : 0}:${cityKey}`
+}
+
 // ---------- Message Classification ----------
 
 function classifySystemMessage(data: Record<string, unknown>): SystemMessageType {
@@ -112,17 +155,8 @@ export interface TzevaadomEventRow {
  * Supabase client dışarıdan verilir (import döngüsünden kaçınmak için).
  */
 export async function fetchTzevaadomHistory(
-  supabaseClient: {
-    from: (table: string) => {
-      select: (columns: string) => {
-        gte: (column: string, value: string) => {
-          order: (column: string, options: { ascending: boolean }) => {
-            limit: (count: number) => Promise<{ data: TzevaadomEventRow[] | null; error: { message: string } | null }>
-          }
-        }
-      }
-    }
-  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabaseClient: any,
   hoursBack = 1,
 ): Promise<{ alerts: TzevaadomAlert[]; systemMessages: TzevaadomSystemMessage[] }> {
   const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
@@ -141,7 +175,7 @@ export async function fetchTzevaadomHistory(
   const alerts: TzevaadomAlert[] = []
   const systemMessages: TzevaadomSystemMessage[] = []
 
-  for (const row of data) {
+  for (const row of data as TzevaadomEventRow[]) {
     const d = row.payload
     const receivedAtMs = new Date(row.received_at).getTime()
 
@@ -152,6 +186,7 @@ export async function fetchTzevaadomHistory(
         threat: (typeof d.threat === 'number' ? d.threat : 0) as TzevaadomThreatId,
         isDrill: d.isDrill === true,
         cities: Array.isArray(d.cities) ? d.cities.filter((c): c is string => typeof c === 'string') : [],
+        citiesEnriched: Array.isArray(d.citiesEnriched) ? d.citiesEnriched as EnrichedCity[] : undefined,
       })
     }
 
@@ -167,6 +202,7 @@ export async function fetchTzevaadomHistory(
         bodyHe: typeof d.bodyHe === 'string' ? d.bodyHe : '',
         bodyAr: typeof d.bodyAr === 'string' ? d.bodyAr : '',
         receivedAtMs,
+        citiesEnriched: Array.isArray(d.citiesEnriched) ? d.citiesEnriched as EnrichedCity[] : undefined,
       })
     }
   }
@@ -221,12 +257,14 @@ export function createTzevaadomFeed(options: TzevaadomFeedOptions) {
 
         if (parsed.type === 'ALERT' && parsed.data) {
           const d = parsed.data as Record<string, unknown>
+          const enriched = Array.isArray(d.citiesEnriched) ? d.citiesEnriched as EnrichedCity[] : undefined
           const alert: TzevaadomAlert = {
             notificationId: typeof d.notificationId === 'string' ? d.notificationId : crypto.randomUUID(),
             time: typeof d.time === 'number' ? d.time : Math.floor(Date.now() / 1000),
             threat: (typeof d.threat === 'number' ? d.threat : 0) as TzevaadomThreatId,
             isDrill: d.isDrill === true,
             cities: Array.isArray(d.cities) ? d.cities.filter((c): c is string => typeof c === 'string') : [],
+            citiesEnriched: enriched,
           }
           options.onAlert(alert)
         }
@@ -244,6 +282,7 @@ export function createTzevaadomFeed(options: TzevaadomFeedOptions) {
             bodyHe: typeof d.bodyHe === 'string' ? d.bodyHe : '',
             bodyAr: typeof d.bodyAr === 'string' ? d.bodyAr : '',
             receivedAtMs: Date.now(),
+            citiesEnriched: Array.isArray(d.citiesEnriched) ? d.citiesEnriched as EnrichedCity[] : undefined,
           }
           options.onSystemMessage(message)
         }
