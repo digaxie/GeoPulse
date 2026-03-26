@@ -3788,10 +3788,11 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 .incident-focus-panel-overlay {
   position: absolute;
   top: 1rem;
+  bottom: 5.5rem;
   left: 1rem;
   z-index: 31;
   width: min(420px, calc(100% - 2rem));
-  max-height: calc(100% - 2rem);
+  max-height: calc(100% - 6.5rem);
   padding: 0.85rem 0.9rem;
   border-radius: 1rem;
   background: rgba(13, 27, 46, 0.92);
@@ -3805,6 +3806,7 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 
 .workspace-map-panel:has(.missile-flight-hud-stack) .incident-focus-panel-overlay {
   top: 5rem;
+  max-height: calc(100% - 10.5rem);
 }
 
 .incident-focus-panel-header {

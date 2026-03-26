@@ -912,6 +912,7 @@ export function ConflictMap({
   const focusIncident = useAlertStore((state) => state.focusIncident)
   const enqueuePendingIncident = useAlertStore((state) => state.enqueuePendingIncident)
   const promotePendingIncident = useAlertStore((state) => state.promotePendingIncident)
+  const clearFocusedIncident = useAlertStore((state) => state.clearFocusedIncident)
   const requestRevealAlertsPanel = useAlertStore((state) => state.requestRevealAlertsPanel)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
@@ -920,6 +921,9 @@ export function ConflictMap({
   const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
   const systemMessages = useAlertStore((state) => state.systemMessages)
   const alertSettings = useScenarioStore((state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS)
+  const setSharedAlertPresentationState = useScenarioStore(
+    (state) => state.setSharedAlertPresentationState,
+  )
   const alertsEnabled = alertSettings.enabled
   const alertAutoZoomEnabled = alertSettings.autoZoomEnabled
   const activeAlertAudioSettings = useMemo(
@@ -3432,6 +3436,106 @@ export function ConflictMap({
   }, [alerts, alertsEnabled, historyAlerts, selectedAlertId])
 
   useEffect(() => {
+    if (access !== 'editor') {
+      return
+    }
+
+    const nextSharedSelectedAlertId = alertsEnabled && focusedSystemMessageId === null
+      ? selectedAlertId
+      : null
+    const nextSharedFocusedSystemMessageId = alertsEnabled
+      ? focusedSystemMessageId
+      : null
+
+    if (
+      alertSettings.sharedSelectedAlertId === nextSharedSelectedAlertId &&
+      alertSettings.sharedFocusedSystemMessageId === nextSharedFocusedSystemMessageId
+    ) {
+      return
+    }
+
+    setSharedAlertPresentationState({
+      selectedAlertId: nextSharedSelectedAlertId,
+      focusedSystemMessageId: nextSharedFocusedSystemMessageId,
+    })
+  }, [
+    access,
+    alertSettings.sharedFocusedSystemMessageId,
+    alertSettings.sharedSelectedAlertId,
+    alertsEnabled,
+    focusedSystemMessageId,
+    selectedAlertId,
+    setSharedAlertPresentationState,
+  ])
+
+  useEffect(() => {
+    if (access === 'editor') {
+      return
+    }
+
+    const sharedSelectedAlertId = alertsEnabled ? alertSettings.sharedSelectedAlertId : null
+    const sharedFocusedSystemMessageId = alertsEnabled
+      ? alertSettings.sharedFocusedSystemMessageId
+      : null
+
+    if (sharedFocusedSystemMessageId !== null) {
+      if (selectedAlertId !== null) {
+        setSelectedAlertId(null)
+      }
+      if (focusedIncidentAlertId !== null) {
+        clearFocusedIncident()
+      }
+      if (focusedSystemMessageId !== sharedFocusedSystemMessageId) {
+        setFocusedSystemMessageId(sharedFocusedSystemMessageId)
+      }
+      return
+    }
+
+    if (focusedSystemMessageId !== null) {
+      setFocusedSystemMessageId(null)
+    }
+
+    if (selectedAlertId !== sharedSelectedAlertId) {
+      setSelectedAlertId(sharedSelectedAlertId)
+    }
+
+    const sharedSelectedAlert = sharedSelectedAlertId
+      ? alerts.find((alert) => alert.id === sharedSelectedAlertId) ??
+        historyAlerts.find((alert) => alert.id === sharedSelectedAlertId) ??
+        null
+      : null
+
+    if (!sharedSelectedAlertId || (sharedSelectedAlert && !isGroupedIncidentAlert(sharedSelectedAlert))) {
+      if (focusedIncidentAlertId !== null) {
+        clearFocusedIncident()
+      }
+      return
+    }
+
+    if (
+      sharedSelectedAlert &&
+      isGroupedIncidentAlert(sharedSelectedAlert) &&
+      focusedIncidentAlertId !== sharedSelectedAlert.id
+    ) {
+      focusIncident(sharedSelectedAlert.id, sharedSelectedAlert.occurredAtMs)
+    }
+  }, [
+    access,
+    alertSettings.sharedFocusedSystemMessageId,
+    alertSettings.sharedSelectedAlertId,
+    alerts,
+    alertsEnabled,
+    clearFocusedIncident,
+    focusIncident,
+    focusedIncidentAlertId,
+    focusedSystemMessageId,
+    historyAlerts,
+    selectedAlertId,
+    setFocusedSystemMessageId,
+    setSelectedAlertId,
+  ])
+
+  useEffect(() => {
     const bindings = alertBindingsRef.current
     if (!bindings) {
       return
@@ -4309,7 +4413,7 @@ export function ConflictMap({
         .filter((item): item is NonNullable<typeof item> => item !== null),
     [alerts, historyAlerts, pendingIncidentQueue],
   )
-  const showFocusedIncidentDock = readOnly && focusedIncidentAlert !== null
+  const showFocusedIncidentDock = focusedIncidentAlert !== null
 
   const selectedAlertSummary = useMemo(() => {
     if (!selectedAlert) {

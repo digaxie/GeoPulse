@@ -45,6 +45,8 @@ describe('alert presentation helpers', () => {
           presentationSoundEnabled: false,
           presentationVolume: 0.3,
           bannerAutoDismissSec: 15,
+          sharedSelectedAlertId: null,
+          sharedFocusedSystemMessageId: null,
         },
         'presentation',
       ),

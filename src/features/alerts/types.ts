@@ -12,6 +12,8 @@ export type ScenarioAlertSettings = {
   presentationSoundEnabled: boolean
   presentationVolume: number
   bannerAutoDismissSec: number
+  sharedSelectedAlertId: string | null
+  sharedFocusedSystemMessageId: number | null
 }
 
 export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
@@ -22,6 +24,8 @@ export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
   presentationSoundEnabled: false,
   presentationVolume: 0.55,
   bannerAutoDismissSec: 15,
+  sharedSelectedAlertId: null,
+  sharedFocusedSystemMessageId: null,
 }
 
 export const MIN_ALERT_RETENTION_MS = 30_000

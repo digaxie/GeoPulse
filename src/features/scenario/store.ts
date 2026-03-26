@@ -114,6 +114,10 @@ type ScenarioStore = {
   setPresentationAlertSoundEnabled: (enabled: boolean) => void
   setPresentationAlertVolume: (volume: number) => void
   setBannerAutoDismissSec: (seconds: number) => void
+  setSharedAlertPresentationState: (input: {
+    selectedAlertId: string | null
+    focusedSystemMessageId: number | null
+  }) => void
   toggleMissileSelection: (missileId: string) => void
   setActiveMissile: (missileId: string | null) => void
   setMissileTarget: (coord: Coordinate | null) => void
@@ -798,6 +802,33 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
             alerts: {
               ...alertsState,
               bannerAutoDismissSec: nextSeconds,
+            },
+          },
+          { trackHistory: false },
+        ),
+      }
+    })
+  },
+
+  setSharedAlertPresentationState(input) {
+    set((current) => {
+      const alertsState = getAlertSettings(current.document)
+      if (
+        alertsState.sharedSelectedAlertId === input.selectedAlertId &&
+        alertsState.sharedFocusedSystemMessageId === input.focusedSystemMessageId
+      ) {
+        return current
+      }
+
+      return {
+        ...applyMutation(
+          current,
+          {
+            ...current.document,
+            alerts: {
+              ...alertsState,
+              sharedSelectedAlertId: input.selectedAlertId,
+              sharedFocusedSystemMessageId: input.focusedSystemMessageId,
             },
           },
           { trackHistory: false },
