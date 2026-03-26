@@ -43,6 +43,32 @@ const cityLookup = new Map()
 /** @type {Map<number, {name_he: string, name_en: string, lat: number, lng: number, zone_en: string, countdown: number}>} */
 const cityLookupById = new Map()
 
+function normalizeCityLookupKey(value) {
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  return value
+    .normalize('NFKC')
+    .replace(/[\u05F3\u05F4"'`´’‘“”„‟]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function registerCityLookupEntry(key, payload) {
+  if (typeof key !== 'string' || !key.trim()) {
+    return
+  }
+
+  cityLookup.set(key, payload)
+
+  const normalizedKey = normalizeCityLookupKey(key)
+  if (normalizedKey && normalizedKey !== key) {
+    cityLookup.set(normalizedKey, payload)
+  }
+}
+
 async function loadCityDatabase() {
   try {
     const response = await fetch(CITIES_URL)
@@ -51,7 +77,7 @@ async function loadCityDatabase() {
 
     for (const city of cities) {
       if (city.name && city.lat && city.lng) {
-        cityLookup.set(city.name, {
+        registerCityLookupEntry(city.name, {
           name_en: city.name_en || city.name,
           lat: city.lat,
           lng: city.lng,
@@ -61,7 +87,7 @@ async function loadCityDatabase() {
       }
       // value alanı da bazen farklı olabiliyor
       if (city.value && city.value !== city.name && city.lat && city.lng) {
-        cityLookup.set(city.value, {
+        registerCityLookupEntry(city.value, {
           name_en: city.name_en || city.name,
           lat: city.lat,
           lng: city.lng,
@@ -92,7 +118,7 @@ function enrichCities(hebrewCities) {
   if (!Array.isArray(hebrewCities)) return []
 
   return hebrewCities.map((cityHe) => {
-    const info = cityLookup.get(cityHe)
+    const info = cityLookup.get(cityHe) || cityLookup.get(normalizeCityLookupKey(cityHe))
     if (info) {
       return {
         he: cityHe,

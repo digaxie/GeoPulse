@@ -402,6 +402,18 @@ function withAlpha(rgbColor: string, alpha: number) {
   return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${clamp(alpha, 0, 1)})`
 }
 
+function hasUsableAlertCoordinate(lat: number, lon: number) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180 &&
+    !(lat === 0 && lon === 0)
+  )
+}
+
 function getStringProperty(
   properties: Record<string, unknown>,
   keys: string[],
@@ -3606,7 +3618,7 @@ export function ConflictMap({
 
     focusedAlertIdRef.current = selectedAlert.id
     const groupedCities =
-      selectedAlert.citiesDetail?.filter((city) => city.lat !== 0 || city.lon !== 0) ?? []
+      selectedAlert.citiesDetail?.filter((city) => hasUsableAlertCoordinate(city.lat, city.lon)) ?? []
 
     if (groupedCities.length > 1) {
       const extent = boundingExtent(
@@ -3617,6 +3629,10 @@ export function ConflictMap({
         maxZoom: 8.5,
         padding: [96, 56, 56, 56],
       })
+      return
+    }
+
+    if (!hasUsableAlertCoordinate(selectedAlert.lat, selectedAlert.lon)) {
       return
     }
 
@@ -4509,7 +4525,7 @@ export function ConflictMap({
       setFocusedSystemMessageId(null)
       setSelectedAlertId(item.alert.id)
       const firstCity = item.alert.citiesDetail?.find(
-        (city) => city.lat !== 0 && city.lon !== 0,
+        (city) => hasUsableAlertCoordinate(city.lat, city.lon),
       )
       if (firstCity) {
         setFocusCoordinate({
@@ -4517,7 +4533,7 @@ export function ConflictMap({
           lon: firstCity.lon,
           name: firstCity.name,
         })
-      } else if (item.alert.lat !== 0 && item.alert.lon !== 0) {
+      } else if (hasUsableAlertCoordinate(item.alert.lat, item.alert.lon)) {
         setFocusCoordinate({
           lat: item.alert.lat,
           lon: item.alert.lon,

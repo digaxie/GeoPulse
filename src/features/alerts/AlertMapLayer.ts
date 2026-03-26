@@ -19,7 +19,23 @@ export type AlertBindings = {
   destroy: () => void
 }
 
+function hasValidAlertCoordinate(lat: number, lon: number) {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180 &&
+    !(lat === 0 && lon === 0)
+  )
+}
+
 function buildAlertFeature(alert: RocketAlert, selectedAlertId: string | null) {
+  if (!hasValidAlertCoordinate(alert.lat, alert.lon)) {
+    return null
+  }
+
   const feature = new Feature<Point>({
     geometry: new Point(fromLonLat([alert.lon, alert.lat])),
   })
@@ -35,10 +51,11 @@ function buildAlertFeature(alert: RocketAlert, selectedAlertId: string | null) {
 function buildAlertFeatures(alert: RocketAlert, selectedAlertId: string | null): Feature<Point>[] {
   const cities = alert.citiesDetail
   if (!cities || cities.length <= 1) {
-    return [buildAlertFeature(alert, selectedAlertId)]
+    const feature = buildAlertFeature(alert, selectedAlertId)
+    return feature ? [feature] : []
   }
 
-  return cities.map((city, i) => {
+  return cities.filter((city) => hasValidAlertCoordinate(city.lat, city.lon)).map((city, i) => {
     const subAlert: RocketAlert = {
       ...alert,
       id: `${alert.id}__pin${i}`,
@@ -110,7 +127,7 @@ export function createAlertLayer(map: OlMap) {
     const cities = activeFocusedAlert.citiesDetail
     if (cities && cities.length > 1) {
       // Her şehir için ayrı pin
-      for (const city of cities) {
+      for (const city of cities.filter((candidate) => hasValidAlertCoordinate(candidate.lat, candidate.lon))) {
         const subAlert: RocketAlert = {
           ...activeFocusedAlert,
           englishName: city.name,
@@ -129,7 +146,7 @@ export function createAlertLayer(map: OlMap) {
         source.addFeature(feature)
         focusedFeatures.push(feature)
       }
-    } else {
+    } else if (hasValidAlertCoordinate(activeFocusedAlert.lat, activeFocusedAlert.lon)) {
       // Tek pin
       const feature = new Feature<Point>({
         geometry: new Point(fromLonLat([activeFocusedAlert.lon, activeFocusedAlert.lat])),
@@ -164,9 +181,14 @@ export function createAlertLayer(map: OlMap) {
       const color = getAlertColor(parentAlert.alertTypeId)
       const elapsed = now - parentAlert.occurredAtMs
 
-      hasAnimatedAlerts = true
       if (cities && cities.length > 1) {
-        for (const city of cities) {
+        const validCities = cities.filter((city) => hasValidAlertCoordinate(city.lat, city.lon))
+        if (validCities.length === 0) {
+          continue
+        }
+
+        hasAnimatedAlerts = true
+        for (const city of validCities) {
           const point = new Point(fromLonLat([city.lon, city.lat]))
           const styles = createAlertPulseStyles(color, elapsed)
           for (const style of styles) {
@@ -174,7 +196,8 @@ export function createAlertLayer(map: OlMap) {
             vectorContext.drawGeometry(point)
           }
         }
-      } else {
+      } else if (hasValidAlertCoordinate(parentAlert.lat, parentAlert.lon)) {
+        hasAnimatedAlerts = true
         const point = new Point(fromLonLat([parentAlert.lon, parentAlert.lat]))
         const styles = createAlertPulseStyles(color, elapsed)
         for (const style of styles) {
