@@ -41,6 +41,7 @@ export type DrawerCardViewModel =
       icon: string
       title: string
       body: string
+      searchText: string
       previewCities: DrawerCity[]
       groups: DrawerCityGroup[]
     }
@@ -54,11 +55,16 @@ export type DrawerCardViewModel =
       icon: string
       title: string
       body: string
+      searchText: string
       previewCities: DrawerCity[]
       groups: DrawerCityGroup[]
     }
 
 const DRAWER_PREVIEW_CITY_LIMIT = 5
+
+export function normalizeDrawerSearchText(value: string) {
+  return value.normalize('NFC').trim().toLowerCase()
+}
 
 function getPreviewCities(groups: DrawerCityGroup[]) {
   return groups.flatMap((group) => group.cities)
@@ -156,6 +162,11 @@ export function buildDrawerCardViewModels(items: DrawerCardItem[]): DrawerCardVi
     const body = getCardBody(item)
     const groups = getCardGroups(item)
     const previewCities = getPreviewCities(groups).slice(0, DRAWER_PREVIEW_CITY_LIMIT)
+    const searchText = normalizeDrawerSearchText([
+      title,
+      body,
+      ...groups.flatMap((group) => [group.zone, ...group.cities.map((city) => city.name)]),
+    ].join(' '))
 
     if (item.kind === 'alert') {
       return {
@@ -168,6 +179,7 @@ export function buildDrawerCardViewModels(items: DrawerCardItem[]): DrawerCardVi
         icon,
         title,
         body,
+        searchText,
         previewCities,
         groups,
       } satisfies DrawerCardViewModel
@@ -183,6 +195,7 @@ export function buildDrawerCardViewModels(items: DrawerCardItem[]): DrawerCardVi
       icon,
       title,
       body,
+      searchText,
       previewCities,
       groups,
     } satisfies DrawerCardViewModel

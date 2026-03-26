@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ALERT_HISTORY_WINDOW_MS, DEFAULT_ALERT_RETENTION_MS } from '@/features/alerts/types'
+import {
+  ALERT_HISTORY_LIMIT,
+  ALERT_HISTORY_WINDOW_MS,
+  DEFAULT_ALERT_RETENTION_MS,
+} from '@/features/alerts/types'
 import {
   buildAlertHistoryQueryWindow,
   createAlertFeed,
@@ -218,7 +222,7 @@ describe('alertService', () => {
           taCityId: null,
         },
       ],
-      Array.from({ length: 255 }, (_, index) => ({
+      Array.from({ length: ALERT_HISTORY_LIMIT + 5 }, (_, index) => ({
         id: `history-${index}`,
         name: `N${index}`,
         englishName: `N${index}`,
@@ -235,7 +239,7 @@ describe('alertService', () => {
       now,
     )
 
-    expect(merged).toHaveLength(250)
+    expect(merged).toHaveLength(ALERT_HISTORY_LIMIT)
     expect(merged.some((alert) => alert.id === 'expired')).toBe(false)
   })
 

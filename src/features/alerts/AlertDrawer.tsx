@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatTimelineDualTime } from '@/features/alerts/types'
 import type {
@@ -6,6 +6,7 @@ import type {
   DrawerCity,
   DrawerCityGroup,
 } from '@/features/alerts/alertDrawerModel'
+import { normalizeDrawerSearchText } from '@/features/alerts/alertDrawerModel'
 
 type AlertDrawerProps = {
   collapsed: boolean
@@ -21,27 +22,46 @@ type AlertDrawerProps = {
 const INITIAL_VISIBLE_COUNT = 60
 const VISIBLE_COUNT_STEP = 60
 const MINUTE_MS = 60_000
+const SEARCH_DEBOUNCE_MS = 200
 
 function isCityFocusable(city: DrawerCity) {
   return city.lat != null && city.lon != null && city.lat !== 0 && city.lon !== 0
 }
 
 function getClockText(timestampMs: number) {
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: true,
-  }).format(timestampMs)
+    hourCycle: 'h23',
+  }).formatToParts(timestampMs)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as Partial<Record<'hour' | 'minute' | 'second', string>>
+
+  return `${values.hour ?? '00'}:${values.minute ?? '00'}:${values.second ?? '00'}`
 }
 
 function getDateText(timestampMs: number) {
-  return new Intl.DateTimeFormat('en-US', {
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-  }).format(timestampMs)
+  }).formatToParts(timestampMs)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as Partial<Record<'weekday' | 'year' | 'month' | 'day', string>>
+
+  const weekday = values.weekday
+    ? `${values.weekday.charAt(0).toLocaleUpperCase('tr-TR')}${values.weekday.slice(1)}`
+    : ''
+
+  return `${values.day ?? '0'} ${values.month ?? ''} ${values.year ?? ''} ${weekday}`.trim()
 }
 
 function getInitialRelativeNow() {
@@ -274,8 +294,19 @@ export function AlertDrawer({
   onToggleCollapsed,
 }: AlertDrawerProps) {
   const [localSelectedKey, setLocalSelectedKey] = useState<string | null>(null)
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
   const relativeNow = useRelativeNow()
+  const searchDebounceTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceTimerRef.current !== null) {
+        window.clearTimeout(searchDebounceTimerRef.current)
+      }
+    }
+  }, [])
 
   const effectiveSelectedKey = useMemo(() => {
     const hasSelectedKey = selectedKey !== null && items.some((item) => item.key === selectedKey)
@@ -287,25 +318,42 @@ export function AlertDrawer({
     )
   }, [items, localSelectedKey, selectedKey])
 
+  const filteredItems = useMemo(() => {
+    if (!debouncedQuery) {
+      return items
+    }
+
+    return items.filter((item) => item.searchText.includes(debouncedQuery))
+  }, [debouncedQuery, items])
+
+  const renderedSelectedKey = useMemo(() => {
+    if (filteredItems.some((item) => item.key === effectiveSelectedKey)) {
+      return effectiveSelectedKey
+    }
+
+    return filteredItems[0]?.key ?? null
+  }, [effectiveSelectedKey, filteredItems])
+
   const selectedIndex = useMemo(
-    () => items.findIndex((item) => item.key === effectiveSelectedKey),
-    [effectiveSelectedKey, items],
+    () => filteredItems.findIndex((item) => item.key === renderedSelectedKey),
+    [filteredItems, renderedSelectedKey],
   )
 
   const effectiveVisibleCount = useMemo(() => {
     if (selectedIndex < 0) {
-      return Math.min(visibleCount, items.length)
+      return Math.min(visibleCount, filteredItems.length)
     }
 
-    return Math.min(Math.max(visibleCount, selectedIndex + 1), items.length)
-  }, [items.length, selectedIndex, visibleCount])
+    return Math.min(Math.max(visibleCount, selectedIndex + 1), filteredItems.length)
+  }, [filteredItems.length, selectedIndex, visibleCount])
 
   const visibleItems = useMemo(
-    () => items.slice(0, effectiveVisibleCount),
-    [effectiveVisibleCount, items],
+    () => filteredItems.slice(0, effectiveVisibleCount),
+    [effectiveVisibleCount, filteredItems],
   )
 
-  const canLoadMore = effectiveVisibleCount < items.length
+  const canLoadMore = effectiveVisibleCount < filteredItems.length
+  const visibleItemCount = Math.min(effectiveVisibleCount, filteredItems.length)
 
   const handleSelect = useCallback(
     (key: string) => {
@@ -316,6 +364,12 @@ export function AlertDrawer({
   )
 
   const handleCollapse = useCallback(() => {
+    if (searchDebounceTimerRef.current !== null) {
+      window.clearTimeout(searchDebounceTimerRef.current)
+      searchDebounceTimerRef.current = null
+    }
+    setSearchInput('')
+    setDebouncedQuery('')
     setVisibleCount(INITIAL_VISIBLE_COUNT)
     onToggleCollapsed()
   }, [onToggleCollapsed])
@@ -325,8 +379,22 @@ export function AlertDrawer({
   }, [onToggleCollapsed])
 
   const handleLoadMore = useCallback(() => {
-    setVisibleCount((current) => Math.min(current + VISIBLE_COUNT_STEP, items.length))
-  }, [items.length])
+    setVisibleCount((current) => Math.min(current + VISIBLE_COUNT_STEP, filteredItems.length))
+  }, [filteredItems.length])
+
+  const handleSearchChange = useCallback((nextValue: string) => {
+    if (searchDebounceTimerRef.current !== null) {
+      window.clearTimeout(searchDebounceTimerRef.current)
+    }
+
+    setSearchInput(nextValue)
+    setVisibleCount(INITIAL_VISIBLE_COUNT)
+
+    searchDebounceTimerRef.current = window.setTimeout(() => {
+      setDebouncedQuery(normalizeDrawerSearchText(nextValue))
+      searchDebounceTimerRef.current = null
+    }, SEARCH_DEBOUNCE_MS)
+  }, [])
 
   if (collapsed) {
     return (
@@ -356,14 +424,27 @@ export function AlertDrawer({
       </div>
 
       <div className="alert-drawer-section-header">
-        <h3>{historyTruncated ? 'Son 24 Saat (kismi)' : 'Son 24 Saat'}</h3>
-        <span>{items.length}</span>
+        <h3>{historyTruncated ? 'Son 24 Saat (kısmi)' : 'Son 24 Saat'}</h3>
+        <span>{visibleItemCount} / {filteredItems.length}</span>
       </div>
 
+      <label className="alert-drawer-search">
+        <input
+          aria-label="Alarm olaylarını ara"
+          className="alert-drawer-search-input"
+          onChange={(event) => handleSearchChange(event.target.value)}
+          placeholder="Şehir, bölge veya olay ara..."
+          type="text"
+          value={searchInput}
+        />
+      </label>
+
       {!enabled ? (
-        <p className="alert-drawer-empty">Canli alarm feed'i su anda kapali.</p>
+        <p className="alert-drawer-empty">Canlı alarm akışı şu anda kapalı.</p>
       ) : items.length === 0 ? (
-        <p className="alert-drawer-empty">Son 24 saatte goruntulenecek olay yok.</p>
+        <p className="alert-drawer-empty">Son 24 saatte görüntülenecek olay yok.</p>
+      ) : filteredItems.length === 0 ? (
+        <p className="alert-drawer-empty">Arama ile eşleşen olay bulunamadı.</p>
       ) : (
         <div className="alert-drawer-list">
           {visibleItems.map((item) => (
@@ -373,7 +454,7 @@ export function AlertDrawer({
               onFocusCity={onFocusCity}
               onSelect={handleSelect}
               relativeNow={relativeNow}
-              selected={item.key === effectiveSelectedKey}
+              selected={item.key === renderedSelectedKey}
             />
           ))}
           {canLoadMore ? (

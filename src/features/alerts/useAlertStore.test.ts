@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  ALERT_HISTORY_LIMIT,
   DEFAULT_ALERT_RETENTION_MS,
   getSystemMessageStreamKey,
   type RocketAlert,
@@ -206,7 +207,7 @@ describe('useAlertStore', () => {
     const now = sampleAlert.fetchedAtMs
     useAlertStore.getState().setHistoryAlerts(
       [
-        ...Array.from({ length: 255 }, (_, index) => ({
+        ...Array.from({ length: ALERT_HISTORY_LIMIT + 5 }, (_, index) => ({
           ...sampleAlert,
           id: `history-${index}`,
           englishName: `Alert ${index}`,
@@ -221,7 +222,7 @@ describe('useAlertStore', () => {
       now,
     )
 
-    expect(useAlertStore.getState().historyAlerts).toHaveLength(250)
+    expect(useAlertStore.getState().historyAlerts).toHaveLength(ALERT_HISTORY_LIMIT)
     expect(useAlertStore.getState().historyAlerts.some((alert) => alert.id === 'expired-history')).toBe(false)
   })
 

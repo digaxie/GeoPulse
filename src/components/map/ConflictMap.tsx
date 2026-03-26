@@ -4407,7 +4407,7 @@ export function ConflictMap({
       return right.key.localeCompare(left.key, 'en')
     })
 
-    return buildDrawerCardViewModels(nextItems.slice(0, 300))
+    return buildDrawerCardViewModels(nextItems.slice(0, 1000))
   }, [alerts, historyAlerts, systemMessages])
   const selectedDrawerItemKey = useMemo(() => {
     if (focusedSystemMessageKey) {

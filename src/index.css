@@ -4153,6 +4153,31 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   color: rgba(248, 250, 252, 0.78);
 }
 
+.alert-drawer-search {
+  display: block;
+  padding: 0 0.2rem 0.05rem;
+}
+
+.alert-drawer-search-input {
+  width: 100%;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.8rem;
+  background: rgba(30, 41, 59, 0.82);
+  color: #f8fafc;
+  font: inherit;
+  outline: none;
+}
+
+.alert-drawer-search-input::placeholder {
+  color: rgba(191, 205, 228, 0.62);
+}
+
+.alert-drawer-search-input:focus {
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.22);
+}
+
 .alert-drawer-empty {
   margin: 0;
   padding: 0.85rem 0.9rem;

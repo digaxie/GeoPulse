@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AlertDrawer } from '@/features/alerts/AlertDrawer'
 import { buildDrawerCardViewModels, type DrawerCardItem } from '@/features/alerts/alertDrawerModel'
@@ -83,6 +83,42 @@ const items: DrawerCardItem[] = [
 ]
 const viewItems = buildDrawerCardViewModels(items)
 
+function formatExpectedDrawerClock(timestampMs: number) {
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(timestampMs)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as Partial<Record<'hour' | 'minute' | 'second', string>>
+
+  return `${values.hour ?? '00'}:${values.minute ?? '00'}:${values.second ?? '00'}`
+}
+
+function formatExpectedDrawerDate(timestampMs: number) {
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).formatToParts(timestampMs)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as Partial<Record<'weekday' | 'year' | 'month' | 'day', string>>
+
+  const weekday = values.weekday
+    ? `${values.weekday.charAt(0).toLocaleUpperCase('tr-TR')}${values.weekday.slice(1)}`
+    : ''
+
+  return `${values.day ?? '0'} ${values.month ?? ''} ${values.year ?? ''} ${weekday}`.trim()
+}
+
 function createAlertItem(index: number): DrawerCardItem {
   const occurredAtMs = Date.UTC(2026, 2, 26, 15, 0, 0) - index * 60_000
   return {
@@ -111,7 +147,34 @@ function createAlertItem(index: number): DrawerCardItem {
   }
 }
 
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
+
 describe('AlertDrawer', () => {
+  it('renders Turkish header clock and date', () => {
+    const fixedNow = Date.UTC(2026, 2, 26, 20, 8, 39)
+    vi.useFakeTimers()
+    vi.setSystemTime(fixedNow)
+
+    render(
+      <AlertDrawer
+        collapsed={false}
+        enabled
+        historyTruncated={false}
+        items={viewItems}
+        onFocusCity={vi.fn()}
+        onSelectItem={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+        selectedKey={null}
+      />,
+    )
+
+    expect(screen.getByText(formatExpectedDrawerClock(fixedNow))).toBeInTheDocument()
+    expect(screen.getByText(formatExpectedDrawerDate(fixedNow))).toBeInTheDocument()
+  })
+
   it('selects and expands the newest card by default', () => {
     render(
       <AlertDrawer
@@ -169,7 +232,7 @@ describe('AlertDrawer', () => {
       />,
     )
 
-    expect(screen.getByText('Son 24 Saat (kismi)')).toBeInTheDocument()
+    expect(screen.getByText('Son 24 Saat (kısmi)')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Malkia' }).length).toBeGreaterThan(0)
 
     rerender(
@@ -213,5 +276,34 @@ describe('AlertDrawer', () => {
 
     await user.click(screen.getByRole('button', { name: '60 daha yukle' }))
     expect(container.querySelectorAll('.alert-drawer-timeline-card')).toHaveLength(70)
+  }, 15000)
+
+  it('filters items with debounced full-text search and shows empty state when no result matches', async () => {
+    render(
+      <AlertDrawer
+        collapsed={false}
+        enabled
+        historyTruncated={false}
+        items={viewItems}
+        onFocusCity={vi.fn()}
+        onSelectItem={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+        selectedKey={`alert:${groupedAlert.id}`}
+      />,
+    )
+
+    const input = screen.getByRole('textbox', { name: 'Alarm olaylarını ara' })
+
+    fireEvent.change(input, { target: { value: 'nahariya' } })
+    await new Promise((resolve) => window.setTimeout(resolve, 250))
+
+    expect(screen.getByRole('button', { name: 'Alarm olayi: Home Front Command - Early Warning' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nahariya' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Alarm olayi: Confrontation Line' })).not.toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: 'zzzzz' } })
+    await new Promise((resolve) => window.setTimeout(resolve, 250))
+
+    expect(screen.getByText('Arama ile eşleşen olay bulunamadı.')).toBeInTheDocument()
   }, 15000)
 })
