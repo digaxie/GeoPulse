@@ -4,12 +4,14 @@ import {
   DEFAULT_SCENARIO_ALERT_SETTINGS,
   formatAlertShelterInstruction,
   formatTimelineDualTime,
+  isGroupedIncidentAlert,
   getAlertTypeLabel,
   getTimelineItemColor,
   getTimelineItemIcon,
   type AlertCityDetail,
   type TimelineItem,
 } from '@/features/alerts/types'
+import { FocusedAlertIncidentView } from '@/features/alerts/FocusedAlertIncidentView'
 import type { EnrichedCity, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 import { useScenarioStore } from '@/features/scenario/store'
@@ -182,6 +184,11 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
   const focusedSystemMessageId = useAlertStore((state) => state.focusedSystemMessageId)
   const setFocusedSystemMessageId = useAlertStore((state) => state.setFocusedSystemMessageId)
+  const focusedIncidentAlertId = useAlertStore((state) => state.focusedIncidentAlertId)
+  const pendingIncidentQueue = useAlertStore((state) => state.pendingIncidentQueue)
+  const focusIncident = useAlertStore((state) => state.focusIncident)
+  const promotePendingIncident = useAlertStore((state) => state.promotePendingIncident)
+  const clearFocusedIncident = useAlertStore((state) => state.clearFocusedIncident)
   const retentionMs = useAlertStore((state) => state.retentionMs)
   const setRetentionMs = useAlertStore((state) => state.setRetentionMs)
   const dismissCurrentAlerts = useAlertStore((state) => state.dismissCurrentAlerts)
@@ -232,6 +239,61 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
     return items.slice(0, 300)
   }, [historyAlerts, systemMessages, alerts])
 
+  const alertsById = useMemo(() => {
+    const next = new Map<string, (typeof historyAlerts)[number]>()
+    for (const alert of historyAlerts) {
+      next.set(alert.id, alert)
+    }
+    for (const alert of alerts) {
+      next.set(alert.id, alert)
+    }
+    return next
+  }, [alerts, historyAlerts])
+
+  const focusedIncidentAlert = useMemo(() => {
+    if (!focusedIncidentAlertId) {
+      return null
+    }
+
+    const alert = alertsById.get(focusedIncidentAlertId) ?? null
+    return isGroupedIncidentAlert(alert) ? alert : null
+  }, [alertsById, focusedIncidentAlertId])
+
+  const pendingIncidentEntries = useMemo(
+    () =>
+      pendingIncidentQueue
+        .map((item) => {
+          const alert = alertsById.get(item.alertId)
+          return alert && isGroupedIncidentAlert(alert) ? { ...item, alert } : null
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    [alertsById, pendingIncidentQueue],
+  )
+
+  function handleSelectAlert(alertId: string | null) {
+    if (!alertId) {
+      setSelectedAlertId(null)
+      return
+    }
+
+    const alert = alertsById.get(alertId)
+    if (alert && isGroupedIncidentAlert(alert)) {
+      focusIncident(alert.id, alert.occurredAtMs)
+      setFocusedSystemMessageId(null)
+      return
+    }
+
+    clearFocusedIncident()
+    setFocusedSystemMessageId(null)
+    setSelectedAlertId(alertId)
+  }
+
+  function handleSelectSystem(id: number | null) {
+    clearFocusedIncident()
+    setSelectedAlertId(null)
+    setFocusedSystemMessageId(id)
+  }
+
   const statusLabel = getFeedStatusLabel(feedStatus)
 
   return (
@@ -256,6 +318,16 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
         <span className="alerts-count-badge">{alerts.length} aktif</span>
         <span className="alerts-count-badge">{timeline.length} kayıt</span>
       </div>
+
+      {focusedIncidentAlert ? (
+        <FocusedAlertIncidentView
+          alert={focusedIncidentAlert}
+          onFocusCity={setFocusCoordinate}
+          onSelectQueue={promotePendingIncident}
+          queueItems={pendingIncidentEntries}
+          variant="sidebar"
+        />
+      ) : null}
 
       <div className="alerts-audio-controls">
         <label className="alerts-audio-toggle alerts-inline-toggle">
@@ -390,7 +462,15 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
                   ? selectedAlertId === item.alert.id
                   : focusedSystemMessageId === item.message.id
                 return (
-                  <TimelineCard key={key} item={item} now={now} active={isSelected} onSelect={(id) => { setFocusedSystemMessageId(null); setSelectedAlertId(id) }} onSelectSystem={(id) => { setSelectedAlertId(null); setFocusedSystemMessageId(id) }} onFocusCity={setFocusCoordinate} />
+                  <TimelineCard
+                    key={key}
+                    item={item}
+                    now={now}
+                    active={isSelected}
+                    onFocusCity={setFocusCoordinate}
+                    onSelect={handleSelectAlert}
+                    onSelectSystem={handleSelectSystem}
+                  />
                 )
               })}
             </div>

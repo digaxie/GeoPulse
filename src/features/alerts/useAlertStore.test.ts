@@ -18,6 +18,30 @@ const sampleAlert: RocketAlert = {
   taCityId: 1608,
 }
 
+const groupedAlert: RocketAlert = {
+  ...sampleAlert,
+  id: 'grouped-alert-1',
+  englishName: 'Dan',
+  areaNameEn: 'Dan',
+  citiesDetail: [
+    { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818, zone: 'Dan', countdown: 90 },
+    { name: 'Holon', lat: 32.0158, lon: 34.7874, zone: 'Dan', countdown: 90 },
+    { name: 'Bat Yam', lat: 32.0238, lon: 34.7519, zone: 'Dan', countdown: 90 },
+  ],
+}
+
+const groupedAlertTwo: RocketAlert = {
+  ...groupedAlert,
+  id: 'grouped-alert-2',
+  englishName: 'Sharon',
+  areaNameEn: 'Sharon',
+  occurredAtMs: groupedAlert.occurredAtMs + 5_000,
+  citiesDetail: [
+    { name: 'Raanana', lat: 32.1848, lon: 34.8713, zone: 'Sharon', countdown: 90 },
+    { name: 'Rishpon', lat: 32.2045, lon: 34.8189, zone: 'Sharon', countdown: 90 },
+  ],
+}
+
 describe('useAlertStore', () => {
   beforeEach(() => {
     useAlertStore.setState({
@@ -29,6 +53,15 @@ describe('useAlertStore', () => {
       selectedAlertId: null,
       dismissedBeforeMs: null,
       retentionMs: DEFAULT_ALERT_RETENTION_MS,
+      tzevaadomStatus: 'disconnected',
+      systemMessages: [],
+      focusedIncidentAlertId: null,
+      focusedIncidentPinnedAtMs: null,
+      pendingIncidentQueue: [],
+      alertsPanelRevealNonce: 0,
+      focusedSystemMessageId: null,
+      focusCoordinate: null,
+      focusTrigger: 0,
     })
   })
 
@@ -135,5 +168,38 @@ describe('useAlertStore', () => {
 
     expect(useAlertStore.getState().historyAlerts).toHaveLength(250)
     expect(useAlertStore.getState().historyAlerts.some((alert) => alert.id === 'expired-history')).toBe(false)
+  })
+
+  it('focuses a grouped incident and queues later grouped incidents without duplicates', () => {
+    const now = groupedAlertTwo.occurredAtMs + 1_000
+    useAlertStore.getState().setAlerts([groupedAlert, groupedAlertTwo], now)
+    useAlertStore.getState().setHistoryAlerts([groupedAlert, groupedAlertTwo], now)
+
+    useAlertStore.getState().focusIncident(groupedAlert.id, groupedAlert.occurredAtMs)
+    useAlertStore.getState().enqueuePendingIncident(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
+    useAlertStore.getState().enqueuePendingIncident(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
+
+    expect(useAlertStore.getState().focusedIncidentAlertId).toBe(groupedAlert.id)
+    expect(useAlertStore.getState().selectedAlertId).toBe(groupedAlert.id)
+    expect(useAlertStore.getState().pendingIncidentQueue).toEqual([
+      {
+        alertId: groupedAlertTwo.id,
+        receivedAtMs: groupedAlertTwo.occurredAtMs,
+      },
+    ])
+  })
+
+  it('promotes a queued grouped incident and removes it from the queue', () => {
+    const now = groupedAlertTwo.occurredAtMs + 1_000
+    useAlertStore.getState().setAlerts([groupedAlert, groupedAlertTwo], now)
+    useAlertStore.getState().setHistoryAlerts([groupedAlert, groupedAlertTwo], now)
+    useAlertStore.getState().focusIncident(groupedAlert.id, groupedAlert.occurredAtMs)
+    useAlertStore.getState().enqueuePendingIncident(groupedAlertTwo.id, groupedAlertTwo.occurredAtMs)
+
+    useAlertStore.getState().promotePendingIncident(groupedAlertTwo.id)
+
+    expect(useAlertStore.getState().focusedIncidentAlertId).toBe(groupedAlertTwo.id)
+    expect(useAlertStore.getState().selectedAlertId).toBe(groupedAlertTwo.id)
+    expect(useAlertStore.getState().pendingIncidentQueue).toEqual([])
   })
 })

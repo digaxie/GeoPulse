@@ -38,6 +38,16 @@ export interface AlertCityDetail {
   countdown: number
 }
 
+export interface AlertCityGroup {
+  zone: string
+  cities: AlertCityDetail[]
+}
+
+export interface AlertIncidentQueueItem {
+  alertId: string
+  receivedAtMs: number
+}
+
 export interface RocketAlert {
   id: string
   name: string
@@ -92,6 +102,66 @@ export function formatAlertOccurredAtTr(alert: Pick<RocketAlert, 'occurredAtMs'>
   ) as Partial<Record<'day' | 'month' | 'year' | 'hour' | 'minute' | 'second', string>>
 
   return `${values.day ?? '00'}.${values.month ?? '00'}.${values.year ?? '0000'} ${values.hour ?? '00'}:${values.minute ?? '00'}:${values.second ?? '00'}`
+}
+
+export function formatAlertTimeOnlyTr(timestampMs: number) {
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(timestampMs)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as Partial<Record<'hour' | 'minute' | 'second', string>>
+
+  return `${values.hour ?? '00'}:${values.minute ?? '00'}:${values.second ?? '00'}`
+}
+
+export function isGroupedIncidentAlert(alert: Pick<RocketAlert, 'citiesDetail'> | null | undefined) {
+  return (alert?.citiesDetail?.length ?? 0) >= 2
+}
+
+export function getAlertCityCount(alert: Pick<RocketAlert, 'citiesDetail'>) {
+  return alert.citiesDetail?.length ?? 1
+}
+
+export function groupAlertCitiesByZone(
+  alert: Pick<RocketAlert, 'citiesDetail' | 'areaNameEn'>,
+): AlertCityGroup[] {
+  const cities = alert.citiesDetail
+  if (!cities || cities.length === 0) {
+    return []
+  }
+
+  const groups = new Map<string, AlertCityDetail[]>()
+
+  for (const city of cities) {
+    const zone = city.zone.trim() || alert.areaNameEn.trim() || 'Bilinmeyen bolge'
+    const existing = groups.get(zone)
+    if (existing) {
+      existing.push(city)
+      continue
+    }
+
+    groups.set(zone, [city])
+  }
+
+  return Array.from(groups.entries()).map(([zone, groupedCities]) => ({
+    zone,
+    cities: groupedCities,
+  }))
+}
+
+export function getAlertZoneCount(alert: Pick<RocketAlert, 'citiesDetail' | 'areaNameEn'>) {
+  const groups = groupAlertCitiesByZone(alert)
+  if (groups.length > 0) {
+    return groups.length
+  }
+
+  return alert.areaNameEn ? 1 : 0
 }
 
 export function getAlertAudioSettingsForRole(

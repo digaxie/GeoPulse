@@ -53,9 +53,11 @@ import {
   getAlertAudioSettingsForRole,
   getAlertAgeMinutes,
   getAlertSirenThrottleWindowMs,
+  isGroupedIncidentAlert,
   getAlertTypeLabel,
   type RocketAlert,
 } from '@/features/alerts/types'
+import { FocusedAlertIncidentView } from '@/features/alerts/FocusedAlertIncidentView'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 import {
   createTzevaadomFeed,
@@ -905,6 +907,12 @@ export function ConflictMap({
   const pruneAlertHistory = useAlertStore((state) => state.pruneHistoryAlerts)
   const pruneActiveAlerts = useAlertStore((state) => state.pruneActiveAlerts)
   const setSelectedAlertId = useAlertStore((state) => state.setSelectedAlertId)
+  const focusedIncidentAlertId = useAlertStore((state) => state.focusedIncidentAlertId)
+  const pendingIncidentQueue = useAlertStore((state) => state.pendingIncidentQueue)
+  const focusIncident = useAlertStore((state) => state.focusIncident)
+  const enqueuePendingIncident = useAlertStore((state) => state.enqueuePendingIncident)
+  const promotePendingIncident = useAlertStore((state) => state.promotePendingIncident)
+  const requestRevealAlertsPanel = useAlertStore((state) => state.requestRevealAlertsPanel)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
   const addSystemMessage = useAlertStore((state) => state.addSystemMessage)
@@ -1477,8 +1485,22 @@ export function ConflictMap({
         // Siren çal
         playAlertSiren()
 
-        // Auto-zoom
-        if (alertAutoZoomEnabled && firstWithCoord) {
+        if (isGroupedIncidentAlert(rocketAlert)) {
+          const hasFocusedIncident = Boolean(useAlertStore.getState().focusedIncidentAlertId)
+
+          if (!hasFocusedIncident) {
+            if (!alertAutoZoomEnabled) {
+              alertSkipSelectedFocusOnceRef.current = true
+            }
+
+            focusIncident(rocketAlert.id, rocketAlert.occurredAtMs)
+            if (access === 'editor') {
+              requestRevealAlertsPanel()
+            }
+          } else {
+            enqueuePendingIncident(rocketAlert.id, rocketAlert.occurredAtMs)
+          }
+        } else if (alertAutoZoomEnabled && firstWithCoord) {
           focusAlertBatch([rocketAlert])
         }
       },
@@ -3452,7 +3474,7 @@ export function ConflictMap({
         view.fit(ext, { duration: 500, maxZoom: 8.5, padding: [96, 56, 56, 56] })
       }
     }
-  }, [alertsEnabled, focusedSystemMessageId, systemMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [alertsEnabled, focusedSystemMessageId, systemMessages])
 
   // City chip click → zoom to coordinate
   const focusCoordinate = useAlertStore((state) => state.focusCoordinate)
@@ -3465,7 +3487,7 @@ export function ConflictMap({
 
     const center = fromLonLat([focusCoordinate.lon, focusCoordinate.lat])
     view.animate({ center, zoom: 11, duration: 400 })
-  }, [focusTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusCoordinate, focusTrigger])
 
   useEffect(() => {
     const map = mapRef.current
@@ -3486,6 +3508,21 @@ export function ConflictMap({
     }
 
     focusedAlertIdRef.current = selectedAlert.id
+    const groupedCities =
+      selectedAlert.citiesDetail?.filter((city) => city.lat !== 0 || city.lon !== 0) ?? []
+
+    if (groupedCities.length > 1) {
+      const extent = boundingExtent(
+        groupedCities.map((city) => fromLonLat([city.lon, city.lat])),
+      )
+      view.fit(extent, {
+        duration: 500,
+        maxZoom: 8.5,
+        padding: [96, 56, 56, 56],
+      })
+      return
+    }
+
     const currentZoom = view.getZoom() ?? documentViewport.zoom
     view.animate({
       center: fromLonLat([selectedAlert.lon, selectedAlert.lat]),
@@ -3493,6 +3530,21 @@ export function ConflictMap({
       duration: 450,
     })
   }, [documentViewport.zoom, selectedAlert])
+
+  useEffect(() => {
+    if (!selectedAlert || !isGroupedIncidentAlert(selectedAlert)) {
+      return
+    }
+
+    if (focusedIncidentAlertId === selectedAlert.id) {
+      return
+    }
+
+    focusIncident(selectedAlert.id, selectedAlert.occurredAtMs)
+    if (access === 'editor') {
+      requestRevealAlertsPanel()
+    }
+  }, [access, focusIncident, focusedIncidentAlertId, requestRevealAlertsPanel, selectedAlert])
 
   useEffect(() => {
     if (
@@ -3954,7 +4006,7 @@ export function ConflictMap({
     return () => {
       map.un('singleclick', handler)
     }
-  }, [access, activeAssetId, addAssetElement, addTextElement, alertsEnabled, selectedTool, readOnly, setMissileTarget, setSelectedAlertId, setTool, tabLifecycleState])
+  }, [access, activeAssetId, addAssetElement, addTextElement, alertsEnabled, selectedTool, readOnly, setFocusedSystemMessageId, setMissileTarget, setSelectedAlertId, setTool, tabLifecycleState])
 
   // Eraser: drag-to-erase interaction
   useEffect(() => {
@@ -4230,6 +4282,34 @@ export function ConflictMap({
     [missileRuntimeFlights],
   )
   const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
+  const focusedIncidentAlert = useMemo(() => {
+    if (!focusedIncidentAlertId) {
+      return null
+    }
+
+    const alert =
+      alerts.find((activeAlert) => activeAlert.id === focusedIncidentAlertId) ??
+      historyAlerts.find((historyAlert) => historyAlert.id === focusedIncidentAlertId) ??
+      null
+
+    return isGroupedIncidentAlert(alert) ? alert : null
+  }, [alerts, focusedIncidentAlertId, historyAlerts])
+
+  const pendingIncidentEntries = useMemo(
+    () =>
+      pendingIncidentQueue
+        .map((item) => {
+          const alert =
+            alerts.find((activeAlert) => activeAlert.id === item.alertId) ??
+            historyAlerts.find((historyAlert) => historyAlert.id === item.alertId) ??
+            null
+
+          return alert && isGroupedIncidentAlert(alert) ? { ...item, alert } : null
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null),
+    [alerts, historyAlerts, pendingIncidentQueue],
+  )
+  const showFocusedIncidentDock = readOnly && focusedIncidentAlert !== null
 
   const selectedAlertSummary = useMemo(() => {
     if (!selectedAlert) {
@@ -4325,7 +4405,16 @@ export function ConflictMap({
           ))}
         </div>
       ) : null}
-        {selectedAlertSummary ? (
+      {showFocusedIncidentDock && focusedIncidentAlert ? (
+        <FocusedAlertIncidentView
+          alert={focusedIncidentAlert}
+          onFocusCity={setFocusCoordinate}
+          onSelectQueue={promotePendingIncident}
+          queueItems={pendingIncidentEntries}
+          variant="overlay"
+        />
+      ) : null}
+        {selectedAlertSummary && focusedIncidentAlert === null ? (
           <div className="alert-selection-hud">
             <div className="alert-selection-hud-title">
               <strong>{selectedAlertSummary.englishName}</strong>

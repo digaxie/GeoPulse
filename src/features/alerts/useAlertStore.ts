@@ -6,6 +6,7 @@ import {
   DEFAULT_ALERT_RETENTION_MS,
   MAX_ALERT_RETENTION_MS,
   MIN_ALERT_RETENTION_MS,
+  type AlertIncidentQueueItem,
   type AlertFeedStatus,
   type AlertFeedTransport,
   type RocketAlert,
@@ -14,6 +15,7 @@ import type { TzevaadomConnectionStatus, TzevaadomSystemMessage } from '@/featur
 
 const MAX_SYSTEM_MESSAGES = 200
 const SYSTEM_MESSAGE_RETENTION_MS = 24 * 60 * 60 * 1000 // 24 hours
+const MAX_PENDING_INCIDENT_QUEUE_ITEMS = 100
 
 type AlertStore = {
   alerts: RocketAlert[]
@@ -27,6 +29,10 @@ type AlertStore = {
   tzevaadomStatus: TzevaadomConnectionStatus
   systemMessages: TzevaadomSystemMessage[]
   focusedSystemMessageId: number | null
+  focusedIncidentAlertId: string | null
+  focusedIncidentPinnedAtMs: number | null
+  pendingIncidentQueue: AlertIncidentQueueItem[]
+  alertsPanelRevealNonce: number
   focusCoordinate: { lat: number; lon: number; name: string } | null
   setAlerts: (alerts: RocketAlert[], fetchedAt?: number | null) => void
   setHistoryAlerts: (alerts: RocketAlert[], now?: number) => void
@@ -43,6 +49,11 @@ type AlertStore = {
   addSystemMessage: (message: TzevaadomSystemMessage) => void
   dismissSystemMessage: (id: number) => void
   clearSystemMessages: () => void
+  focusIncident: (alertId: string, pinnedAtMs?: number) => void
+  enqueuePendingIncident: (alertId: string, receivedAtMs: number) => void
+  promotePendingIncident: (alertId: string) => void
+  clearFocusedIncident: () => void
+  requestRevealAlertsPanel: () => void
   setFocusedSystemMessageId: (id: number | null) => void
   setFocusCoordinate: (coord: { lat: number; lon: number; name: string } | null) => void
   focusTrigger: number
@@ -86,6 +97,34 @@ function areAlertsEqual(left: RocketAlert[], right: RocketAlert[]) {
   return true
 }
 
+function arePendingIncidentQueueItemsEqual(
+  left: AlertIncidentQueueItem[],
+  right: AlertIncidentQueueItem[],
+) {
+  if (left === right) {
+    return true
+  }
+
+  if (left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftItem = left[index]
+    const rightItem = right[index]
+    if (
+      !leftItem ||
+      !rightItem ||
+      leftItem.alertId !== rightItem.alertId ||
+      leftItem.receivedAtMs !== rightItem.receivedAtMs
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function resolveSelectedAlertId(
   selectedAlertId: string | null,
   alerts: RocketAlert[],
@@ -99,6 +138,54 @@ function resolveSelectedAlertId(
     historyAlerts.some((alert) => alert.id === selectedAlertId)
     ? selectedAlertId
     : null
+}
+
+function resolveFocusedIncidentAlertId(
+  focusedIncidentAlertId: string | null,
+  alerts: RocketAlert[],
+  historyAlerts: RocketAlert[],
+) {
+  if (!focusedIncidentAlertId) {
+    return null
+  }
+
+  return alerts.some((alert) => alert.id === focusedIncidentAlertId) ||
+    historyAlerts.some((alert) => alert.id === focusedIncidentAlertId)
+    ? focusedIncidentAlertId
+    : null
+}
+
+function normalizePendingIncidentQueue(
+  queue: AlertIncidentQueueItem[],
+  alerts: RocketAlert[],
+  historyAlerts: RocketAlert[],
+  focusedIncidentAlertId: string | null,
+) {
+  const availableIds = new Set<string>([
+    ...alerts.map((alert) => alert.id),
+    ...historyAlerts.map((alert) => alert.id),
+  ])
+  const seenIds = new Set<string>()
+  const nextQueue: AlertIncidentQueueItem[] = []
+
+  for (const item of queue) {
+    if (
+      item.alertId === focusedIncidentAlertId ||
+      !availableIds.has(item.alertId) ||
+      seenIds.has(item.alertId)
+    ) {
+      continue
+    }
+
+    seenIds.add(item.alertId)
+    nextQueue.push(item)
+
+    if (nextQueue.length >= MAX_PENDING_INCIDENT_QUEUE_ITEMS) {
+      break
+    }
+  }
+
+  return nextQueue
 }
 
 function normalizeHistoryAlerts(alerts: RocketAlert[], now = Date.now()) {
@@ -147,6 +234,10 @@ export const useAlertStore = create<AlertStore>((set) => ({
   tzevaadomStatus: 'disconnected',
   systemMessages: [],
   focusedSystemMessageId: null,
+  focusedIncidentAlertId: null,
+  focusedIncidentPinnedAtMs: null,
+  pendingIncidentQueue: [],
+  alertsPanelRevealNonce: 0,
   focusCoordinate: null,
   focusTrigger: 0,
 
@@ -163,13 +254,26 @@ export const useAlertStore = create<AlertStore>((set) => ({
         visibleAlerts,
         current.historyAlerts,
       )
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        visibleAlerts,
+        current.historyAlerts,
+      )
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        current.pendingIncidentQueue,
+        visibleAlerts,
+        current.historyAlerts,
+        nextFocusedIncidentAlertId,
+      )
       const nextLastFetchedAt = fetchedAt ?? current.lastFetchedAt
       const sameAlerts = areAlertsEqual(current.alerts, visibleAlerts)
 
       if (
         sameAlerts &&
         current.lastFetchedAt === nextLastFetchedAt &&
-        current.selectedAlertId === nextSelectedAlertId
+        current.selectedAlertId === nextSelectedAlertId &&
+        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
+        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
       ) {
         return current
       }
@@ -178,6 +282,14 @@ export const useAlertStore = create<AlertStore>((set) => ({
         alerts: sameAlerts ? current.alerts : visibleAlerts,
         lastFetchedAt: nextLastFetchedAt,
         selectedAlertId: nextSelectedAlertId,
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        focusedIncidentPinnedAtMs:
+          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
+            ? current.focusedIncidentPinnedAtMs
+            : nextFocusedIncidentAlertId
+              ? current.focusedIncidentPinnedAtMs
+              : null,
       }
     })
   },
@@ -190,10 +302,23 @@ export const useAlertStore = create<AlertStore>((set) => ({
         current.alerts,
         nextHistoryAlerts,
       )
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        current.alerts,
+        nextHistoryAlerts,
+      )
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        current.pendingIncidentQueue,
+        current.alerts,
+        nextHistoryAlerts,
+        nextFocusedIncidentAlertId,
+      )
 
       if (
         areAlertsEqual(current.historyAlerts, nextHistoryAlerts) &&
-        current.selectedAlertId === nextSelectedAlertId
+        current.selectedAlertId === nextSelectedAlertId &&
+        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
+        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
       ) {
         return current
       }
@@ -201,6 +326,14 @@ export const useAlertStore = create<AlertStore>((set) => ({
       return {
         historyAlerts: nextHistoryAlerts,
         selectedAlertId: nextSelectedAlertId,
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        focusedIncidentPinnedAtMs:
+          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
+            ? current.focusedIncidentPinnedAtMs
+            : nextFocusedIncidentAlertId
+              ? current.focusedIncidentPinnedAtMs
+              : null,
       }
     })
   },
@@ -208,12 +341,36 @@ export const useAlertStore = create<AlertStore>((set) => ({
   mergeHistoryAlerts(alerts, now = Date.now()) {
     set((current) => {
       const nextHistoryAlerts = normalizeHistoryAlerts([...current.historyAlerts, ...alerts], now)
-      if (areAlertsEqual(current.historyAlerts, nextHistoryAlerts)) {
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        current.alerts,
+        nextHistoryAlerts,
+      )
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        current.pendingIncidentQueue,
+        current.alerts,
+        nextHistoryAlerts,
+        nextFocusedIncidentAlertId,
+      )
+
+      if (
+        areAlertsEqual(current.historyAlerts, nextHistoryAlerts) &&
+        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
+        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
+      ) {
         return current
       }
 
       return {
         historyAlerts: nextHistoryAlerts,
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        focusedIncidentPinnedAtMs:
+          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
+            ? current.focusedIncidentPinnedAtMs
+            : nextFocusedIncidentAlertId
+              ? current.focusedIncidentPinnedAtMs
+              : null,
       }
     })
   },
@@ -226,10 +383,23 @@ export const useAlertStore = create<AlertStore>((set) => ({
         current.alerts,
         nextHistoryAlerts,
       )
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        current.alerts,
+        nextHistoryAlerts,
+      )
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        current.pendingIncidentQueue,
+        current.alerts,
+        nextHistoryAlerts,
+        nextFocusedIncidentAlertId,
+      )
 
       if (
         areAlertsEqual(current.historyAlerts, nextHistoryAlerts) &&
-        current.selectedAlertId === nextSelectedAlertId
+        current.selectedAlertId === nextSelectedAlertId &&
+        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
+        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
       ) {
         return current
       }
@@ -237,6 +407,14 @@ export const useAlertStore = create<AlertStore>((set) => ({
       return {
         historyAlerts: nextHistoryAlerts,
         selectedAlertId: nextSelectedAlertId,
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        focusedIncidentPinnedAtMs:
+          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
+            ? current.focusedIncidentPinnedAtMs
+            : nextFocusedIncidentAlertId
+              ? current.focusedIncidentPinnedAtMs
+              : null,
       }
     })
   },
@@ -274,11 +452,27 @@ export const useAlertStore = create<AlertStore>((set) => ({
         nextAlerts,
         current.historyAlerts,
       )
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        nextAlerts,
+        current.historyAlerts,
+      )
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        current.pendingIncidentQueue,
+        nextAlerts,
+        current.historyAlerts,
+        nextFocusedIncidentAlertId,
+      )
 
       return {
         retentionMs: nextRetentionMs,
         alerts: nextAlerts,
         selectedAlertId: nextSelectedAlertId,
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        focusedIncidentPinnedAtMs: nextFocusedIncidentAlertId
+          ? current.focusedIncidentPinnedAtMs
+          : null,
       }
     })
   },
@@ -296,10 +490,23 @@ export const useAlertStore = create<AlertStore>((set) => ({
         nextAlerts,
         current.historyAlerts,
       )
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        nextAlerts,
+        current.historyAlerts,
+      )
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        current.pendingIncidentQueue,
+        nextAlerts,
+        current.historyAlerts,
+        nextFocusedIncidentAlertId,
+      )
 
       if (
         areAlertsEqual(current.alerts, nextAlerts) &&
-        current.selectedAlertId === nextSelectedAlertId
+        current.selectedAlertId === nextSelectedAlertId &&
+        current.focusedIncidentAlertId === nextFocusedIncidentAlertId &&
+        arePendingIncidentQueueItemsEqual(current.pendingIncidentQueue, nextPendingIncidentQueue)
       ) {
         return current
       }
@@ -307,16 +514,42 @@ export const useAlertStore = create<AlertStore>((set) => ({
       return {
         alerts: nextAlerts,
         selectedAlertId: nextSelectedAlertId,
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        focusedIncidentPinnedAtMs:
+          nextFocusedIncidentAlertId === current.focusedIncidentAlertId
+            ? current.focusedIncidentPinnedAtMs
+            : nextFocusedIncidentAlertId
+              ? current.focusedIncidentPinnedAtMs
+              : null,
       }
     })
   },
 
   dismissCurrentAlerts(cutoffMs = Date.now()) {
-    set((current) => ({
-      alerts: [],
-      selectedAlertId: resolveSelectedAlertId(current.selectedAlertId, [], current.historyAlerts),
-      dismissedBeforeMs: cutoffMs,
-    }))
+    set((current) => {
+      const nextFocusedIncidentAlertId = resolveFocusedIncidentAlertId(
+        current.focusedIncidentAlertId,
+        [],
+        current.historyAlerts,
+      )
+
+      return {
+        alerts: [],
+        selectedAlertId: resolveSelectedAlertId(current.selectedAlertId, [], current.historyAlerts),
+        focusedIncidentAlertId: nextFocusedIncidentAlertId,
+        focusedIncidentPinnedAtMs: nextFocusedIncidentAlertId
+          ? current.focusedIncidentPinnedAtMs
+          : null,
+        pendingIncidentQueue: normalizePendingIncidentQueue(
+          current.pendingIncidentQueue,
+          [],
+          current.historyAlerts,
+          nextFocusedIncidentAlertId,
+        ),
+        dismissedBeforeMs: cutoffMs,
+      }
+    })
   },
 
   clearAlerts() {
@@ -326,6 +559,10 @@ export const useAlertStore = create<AlertStore>((set) => ({
       feedTransport: 'none',
       lastFetchedAt: null,
       selectedAlertId: null,
+      focusedIncidentAlertId: null,
+      focusedIncidentPinnedAtMs: null,
+      pendingIncidentQueue: [],
+      alertsPanelRevealNonce: 0,
       dismissedBeforeMs: null,
     })
   },
@@ -363,6 +600,92 @@ export const useAlertStore = create<AlertStore>((set) => ({
 
   clearSystemMessages() {
     set({ systemMessages: [], focusedSystemMessageId: null })
+  },
+
+  focusIncident(alertId, pinnedAtMs = Date.now()) {
+    set((current) => {
+      const nextPendingIncidentQueue = current.pendingIncidentQueue.filter(
+        (item) => item.alertId !== alertId,
+      )
+
+      if (
+        current.focusedIncidentAlertId === alertId &&
+        current.selectedAlertId === alertId &&
+        current.focusedSystemMessageId === null &&
+        current.focusedIncidentPinnedAtMs === pinnedAtMs &&
+        current.pendingIncidentQueue.length === nextPendingIncidentQueue.length
+      ) {
+        return current
+      }
+
+      return {
+        focusedIncidentAlertId: alertId,
+        focusedIncidentPinnedAtMs: pinnedAtMs,
+        pendingIncidentQueue: nextPendingIncidentQueue,
+        selectedAlertId: alertId,
+        focusedSystemMessageId: null,
+      }
+    })
+  },
+
+  enqueuePendingIncident(alertId, receivedAtMs) {
+    set((current) => {
+      if (current.focusedIncidentAlertId === alertId) {
+        return current
+      }
+
+      const nextPendingIncidentQueue = normalizePendingIncidentQueue(
+        [{ alertId, receivedAtMs }, ...current.pendingIncidentQueue],
+        current.alerts,
+        current.historyAlerts,
+        current.focusedIncidentAlertId,
+      )
+
+      return nextPendingIncidentQueue.length === current.pendingIncidentQueue.length &&
+        nextPendingIncidentQueue.every((item, index) => {
+          const currentItem = current.pendingIncidentQueue[index]
+          return currentItem?.alertId === item.alertId && currentItem.receivedAtMs === item.receivedAtMs
+        })
+        ? current
+        : { pendingIncidentQueue: nextPendingIncidentQueue }
+    })
+  },
+
+  promotePendingIncident(alertId) {
+    set((current) => {
+      const queuedItem = current.pendingIncidentQueue.find((item) => item.alertId === alertId)
+      if (!queuedItem && current.focusedIncidentAlertId === alertId) {
+        return current
+      }
+
+      return {
+        focusedIncidentAlertId: alertId,
+        focusedIncidentPinnedAtMs: queuedItem?.receivedAtMs ?? Date.now(),
+        pendingIncidentQueue: current.pendingIncidentQueue.filter((item) => item.alertId !== alertId),
+        selectedAlertId: alertId,
+        focusedSystemMessageId: null,
+      }
+    })
+  },
+
+  clearFocusedIncident() {
+    set((current) =>
+      current.focusedIncidentAlertId === null &&
+      current.focusedIncidentPinnedAtMs === null &&
+      current.pendingIncidentQueue.length === 0
+        ? current
+        : {
+            focusedIncidentAlertId: null,
+            focusedIncidentPinnedAtMs: null,
+            pendingIncidentQueue: [],
+          },
+    )
+  },
+
+  requestRevealAlertsPanel() {
+    set((current) => ({
+      alertsPanelRevealNonce: current.alertsPanelRevealNonce + 1,
+    }))
   },
 
   setFocusedSystemMessageId(id) {

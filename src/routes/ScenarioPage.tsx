@@ -12,6 +12,7 @@ import { ToolDock } from '@/components/panels/ToolDock'
 import { VersionHistoryPanel } from '@/components/panels/VersionHistoryPanel'
 import { AlertsPanel } from '@/features/alerts/AlertsPanel'
 import { SystemMessageBanner } from '@/features/alerts/SystemMessageBanner'
+import { useAlertStore } from '@/features/alerts/useAlertStore'
 import { useAssets } from '@/features/assets/useAssets'
 import { useAuth } from '@/features/auth/useAuth'
 import { MissilePanel } from '@/features/missiles/MissilePanel'
@@ -199,6 +200,7 @@ export function ScenarioPage() {
   const sidebarIconBarRef = useRef<HTMLElement | null>(null)
 
   const [activePanel, setActivePanel] = useState<PanelKey | null>('tools')
+  const alertsPanelRevealNonce = useAlertStore((state) => state.alertsPanelRevealNonce)
   const [sidebarCanScrollLeft, setSidebarCanScrollLeft] = useState(false)
   const [sidebarCanScrollRight, setSidebarCanScrollRight] = useState(false)
   const [assetDropRequest, setAssetDropRequest] = useState<{
@@ -211,6 +213,19 @@ export function ScenarioPage() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(false)
   const [snapshotsError, setSnapshotsError] = useState<string | null>(null)
   const [busySnapshotId, setBusySnapshotId] = useState<string | null>(null)
+  const processedAlertsPanelRevealNonceRef = useRef(0)
+
+  useEffect(() => {
+    if (
+      alertsPanelRevealNonce <= 0 ||
+      alertsPanelRevealNonce === processedAlertsPanelRevealNonceRef.current
+    ) {
+      return
+    }
+
+    processedAlertsPanelRevealNonceRef.current = alertsPanelRevealNonce
+    setActivePanel('alerts')
+  }, [alertsPanelRevealNonce])
 
   useEffect(() => {
     if (!activeAssetId && assets.length > 0) {
