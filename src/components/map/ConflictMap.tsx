@@ -45,22 +45,17 @@ import {
 } from '@/components/map/conflictMapScene'
 import { createAlertLayer, type AlertBindings } from '@/features/alerts/AlertMapLayer'
 import {
-  type AlertIncidentDockItem,
   type AlertAudioRole,
   type AlertFeedStatus,
   DEFAULT_SCENARIO_ALERT_SETTINGS,
-  formatAlertOccurredAtTr,
-  formatAlertShelterInstruction,
   getAlertAudioSettingsForRole,
-  getAlertAgeMinutes,
   getSystemMessageStreamKey,
   getAlertSirenThrottleWindowMs,
   isGroupedIncidentAlert,
   isIncidentStreamSystemMessage,
-  getAlertTypeLabel,
   type RocketAlert,
 } from '@/features/alerts/types'
-import { FocusedAlertIncidentView } from '@/features/alerts/FocusedAlertIncidentView'
+import { AlertDrawer, type DrawerCardItem } from '@/features/alerts/AlertDrawer'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 import {
   createTzevaadomFeed,
@@ -913,6 +908,7 @@ export function ConflictMap({
   const resetMissileRuntime = useMissileStore((state) => state.resetRuntime)
   const alerts = useAlertStore((state) => state.alerts)
   const historyAlerts = useAlertStore((state) => state.historyAlerts)
+  const historyTruncated = useAlertStore((state) => state.historyTruncated)
   const setHistoryTruncated = useAlertStore((state) => state.setHistoryTruncated)
   const alertRetentionMs = useAlertStore((state) => state.retentionMs)
   const selectedAlertId = useAlertStore((state) => state.selectedAlertId)
@@ -929,8 +925,6 @@ export function ConflictMap({
   const appendIncidentStreamAlert = useAlertStore((state) => state.appendIncidentStreamAlert)
   const appendIncidentStreamSystem = useAlertStore((state) => state.appendIncidentStreamSystem)
   const focusIncidentStreamItem = useAlertStore((state) => state.focusIncidentStreamItem)
-  const clearIncidentStream = useAlertStore((state) => state.clearIncidentStream)
-  const requestRevealAlertsPanel = useAlertStore((state) => state.requestRevealAlertsPanel)
   const clearAlertStore = useAlertStore((state) => state.clearAlerts)
   const setTzevaadomStatus = useAlertStore((state) => state.setTzevaadomStatus)
   const addSystemMessage = useAlertStore((state) => state.addSystemMessage)
@@ -986,8 +980,8 @@ export function ConflictMap({
   const [mapError, setMapError] = useState<string | null>(null)
   const [selectionHud, setSelectionHud] = useState<SelectionHudModel | null>(null)
   const [tabLifecycleState, setTabLifecycleState] = useState<TabMapLifecycleState>('active')
-  const [alertNow, setAlertNow] = useState(() => Date.now())
   const [alertAudioUnlockState, setAlertAudioUnlockState] = useState<AlertAudioUnlockState>('locked')
+  const [alertDrawerCollapsed, setAlertDrawerCollapsed] = useState(false)
   const [inlineTextInput, setInlineTextInput] = useState<{
     coordinate: [number, number]
     text: string
@@ -1067,20 +1061,6 @@ export function ConflictMap({
     alertAudioUnlockStateRef.current = alertAudioUnlockState
     elementOrderRef.current = new Map(visibleElements.map((element, index) => [element.id, index]))
   }, [alertAudioUnlockState, alertSoundEnabled, alertVolume, alertsEnabled, assetMap, basemap, visibleElements, labelOptions, stylePrefs, eraserSize, readOnly, selectedElementId, tabLifecycleState, zoom])
-
-  useEffect(() => {
-    if (!alertsEnabled || (!selectedAlertId && alerts.length === 0)) {
-      return
-    }
-
-    const timerId = window.setInterval(() => {
-      setAlertNow(Date.now())
-    }, 30_000)
-
-    return () => {
-      window.clearInterval(timerId)
-    }
-  }, [alerts.length, alertsEnabled, selectedAlertId])
 
   const muteAlertAutoZoom = useEffectEvent(() => {
     alertAutoZoomMutedUntilRef.current = Date.now() + 15_000
@@ -1522,6 +1502,7 @@ export function ConflictMap({
 
         // Siren Ã§al
         playAlertSiren()
+        setAlertDrawerCollapsed(false)
 
         if (isGroupedIncidentAlert(rocketAlert)) {
           const currentState = useAlertStore.getState()
@@ -1536,9 +1517,6 @@ export function ConflictMap({
             isGroupedIncidentAlert(selectedDockAlert)
 
           appendIncidentStreamAlert(rocketAlert.id, rocketAlert.occurredAtMs)
-          if (access === 'editor') {
-            requestRevealAlertsPanel()
-          }
 
           if (!hasIncidentDockFocus && alertAutoZoomEnabled && firstWithCoord) {
             focusAlertBatch([rocketAlert])
@@ -1558,9 +1536,9 @@ export function ConflictMap({
           addSystemMessage(message)
           if ((message.citiesEnriched?.length ?? 0) > 0) {
             appendIncidentStreamSystem(getSystemMessageStreamKey(message), message.receivedAtMs)
-            if (access === 'editor') {
-              requestRevealAlertsPanel()
-            }
+          }
+          if (message.type === 'early_warning') {
+            setAlertDrawerCollapsed(false)
           }
         }
       },
@@ -3657,17 +3635,7 @@ export function ConflictMap({
     if (focusedIncidentStreamKey !== nextStreamKey) {
       focusIncidentStreamItem(nextStreamKey)
     }
-
-    if (access === 'editor') {
-      requestRevealAlertsPanel()
-    }
-  }, [
-    access,
-    focusIncidentStreamItem,
-    focusedIncidentStreamKey,
-    requestRevealAlertsPanel,
-    selectedAlert,
-  ])
+  }, [focusIncidentStreamItem, focusedIncidentStreamKey, selectedAlert])
 
   useEffect(() => {
     if (
@@ -4405,123 +4373,51 @@ export function ConflictMap({
     [missileRuntimeFlights],
   )
   const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
-  const resolvedIncidentStreamItems = useMemo<AlertIncidentDockItem[]>(() => {
-    const nextItems: AlertIncidentDockItem[] = []
+  const drawerItems = useMemo<DrawerCardItem[]>(() => {
+    const activeAlertIds = new Set(alerts.map((alert) => alert.id))
+    const nextItems: DrawerCardItem[] = [
+      ...historyAlerts.map((alert) => ({
+        key: `alert:${alert.id}`,
+        kind: 'alert' as const,
+        timestampMs: alert.occurredAtMs,
+        isLive: activeAlertIds.has(alert.id),
+        alert,
+      })),
+      ...systemMessages
+        .filter((message) => isIncidentStreamSystemMessage(message))
+        .map((message) => ({
+          key: `system:${getSystemMessageStreamKey(message)}`,
+          kind: 'system' as const,
+          timestampMs: message.receivedAtMs,
+          isLive: false,
+          message,
+        })),
+    ]
 
-    for (const item of incidentStreamItems) {
-      if (item.kind === 'alert') {
-        const alert =
-          alerts.find((activeAlert) => activeAlert.id === item.alertId) ??
-          historyAlerts.find((historyAlert) => historyAlert.id === item.alertId) ??
-          null
-
-        if (!alert || !isGroupedIncidentAlert(alert)) {
-          continue
-        }
-
-        nextItems.push({
-          key: item.key,
-          kind: 'alert',
-          receivedAtMs: item.receivedAtMs,
-          expiresAtMs: item.expiresAtMs,
-          isLive: true,
-          alert,
-        })
-        continue
+    nextItems.sort((left, right) => {
+      if (right.timestampMs !== left.timestampMs) {
+        return right.timestampMs - left.timestampMs
       }
 
-      const message =
-        systemMessages.find(
-          (candidate) => getSystemMessageStreamKey(candidate) === item.systemMessageKey,
-        ) ?? null
-      if (
-        !message ||
-        !isIncidentStreamSystemMessage(message) ||
-        (message.citiesEnriched?.length ?? 0) === 0
-      ) {
-        continue
-      }
+      return right.key.localeCompare(left.key, 'en')
+    })
 
-      nextItems.push({
-        key: item.key,
-        kind: 'system',
-        receivedAtMs: item.receivedAtMs,
-        expiresAtMs: item.expiresAtMs,
-        isLive: true,
-        message,
-      })
+    return nextItems.slice(0, 300)
+  }, [alerts, historyAlerts, systemMessages])
+  const selectedDrawerItemKey = useMemo(() => {
+    if (focusedSystemMessageKey) {
+      return `system:${focusedSystemMessageKey}`
     }
 
-    return nextItems
-  }, [alerts, historyAlerts, incidentStreamItems, systemMessages])
-  const focusedLiveIncidentItem = useMemo(
-    () =>
-      resolvedIncidentStreamItems.find((item) => item.key === focusedIncidentStreamKey) ??
-      resolvedIncidentStreamItems[0] ??
-      null,
-    [focusedIncidentStreamKey, resolvedIncidentStreamItems],
-  )
-  const selectedGroupedAlertDockItem = useMemo(() => {
-    if (!selectedAlert || !isGroupedIncidentAlert(selectedAlert)) {
-      return null
+    if (selectedAlertId) {
+      return `alert:${selectedAlertId}`
     }
 
-    return {
-      key: `alert:${selectedAlert.id}`,
-      kind: 'alert',
-      receivedAtMs: selectedAlert.occurredAtMs,
-      expiresAtMs: null,
-      isLive: false,
-      alert: selectedAlert,
-    } satisfies AlertIncidentDockItem
-  }, [selectedAlert])
-  const selectedSystemDockItem = useMemo(() => {
-    if (focusedSystemMessageKey === null) {
-      return null
-    }
+    return null
+  }, [focusedSystemMessageKey, selectedAlertId])
 
-    const message =
-      systemMessages.find((candidate) => getSystemMessageStreamKey(candidate) === focusedSystemMessageKey) ?? null
-    if (
-      !message ||
-      !isIncidentStreamSystemMessage(message) ||
-      (message.citiesEnriched?.length ?? 0) === 0
-    ) {
-      return null
-    }
-
-    return {
-      key: `system:${getSystemMessageStreamKey(message)}`,
-      kind: 'system',
-      receivedAtMs: message.receivedAtMs,
-      expiresAtMs: null,
-      isLive: false,
-      message,
-    } satisfies AlertIncidentDockItem
-  }, [focusedSystemMessageKey, systemMessages])
-  const dockFocusedItem = selectedSystemDockItem ?? selectedGroupedAlertDockItem ?? focusedLiveIncidentItem
-  const showFocusedIncidentDock = dockFocusedItem !== null
-
-  const selectedAlertSummary = useMemo(() => {
-    if (!selectedAlert || isGroupedIncidentAlert(selectedAlert)) {
-      return null
-    }
-
-    return {
-      id: selectedAlert.id,
-      englishName: selectedAlert.englishName,
-      areaNameEn: selectedAlert.areaNameEn,
-      shelterText: formatAlertShelterInstruction(selectedAlert.countdownSec),
-      alertTypeLabel: getAlertTypeLabel(selectedAlert.alertTypeId),
-      ageMinutes: getAlertAgeMinutes(selectedAlert, alertNow),
-      occurredAtText: formatAlertOccurredAtTr(selectedAlert),
-      citiesDetail: selectedAlert.citiesDetail,
-    }
-  }, [alertNow, selectedAlert])
-
-  const handleSelectIncidentStreamItem = useCallback((key: string) => {
-    focusIncidentStreamItem(key)
-    const item = resolvedIncidentStreamItems.find((candidate) => candidate.key === key)
+  const handleSelectDrawerItem = useCallback((key: string) => {
+    const item = drawerItems.find((candidate) => candidate.key === key)
     if (!item) {
       return
     }
@@ -4529,49 +4425,12 @@ export function ConflictMap({
     if (item.kind === 'alert') {
       setFocusedSystemMessageKey(null)
       setSelectedAlertId(item.alert.id)
-      const firstCity = item.alert.citiesDetail?.find(
-        (city) => hasUsableAlertCoordinate(city.lat, city.lon),
-      )
-      if (firstCity) {
-        setFocusCoordinate({
-          lat: firstCity.lat,
-          lon: firstCity.lon,
-          name: firstCity.name,
-        })
-      } else if (hasUsableAlertCoordinate(item.alert.lat, item.alert.lon)) {
-        setFocusCoordinate({
-          lat: item.alert.lat,
-          lon: item.alert.lon,
-          name: item.alert.englishName,
-        })
-      }
       return
     }
 
     setSelectedAlertId(null)
     setFocusedSystemMessageKey(getSystemMessageStreamKey(item.message))
-    const firstCity = item.message.citiesEnriched?.find(
-      (city) => city.lat != null && city.lng != null,
-    )
-    if (firstCity?.lat != null && firstCity.lng != null) {
-      setFocusCoordinate({
-        lat: firstCity.lat,
-        lon: firstCity.lng,
-        name: firstCity.en || firstCity.he,
-      })
-    }
-  }, [
-    focusIncidentStreamItem,
-    resolvedIncidentStreamItems,
-    setFocusCoordinate,
-    setFocusedSystemMessageKey,
-    setSelectedAlertId,
-  ])
-  const dismissFocusedIncidentPanel = useCallback(() => {
-    clearIncidentStream()
-    setSelectedAlertId(null)
-    setFocusedSystemMessageKey(null)
-  }, [clearIncidentStream, setFocusedSystemMessageKey, setSelectedAlertId])
+  }, [drawerItems, setFocusedSystemMessageKey, setSelectedAlertId])
 
   return (
     <div
@@ -4634,43 +4493,17 @@ export function ConflictMap({
           ))}
         </div>
       ) : null}
-      {showFocusedIncidentDock && dockFocusedItem ? (
-        <FocusedAlertIncidentView
-          focusedItem={dockFocusedItem}
-          onDismiss={dismissFocusedIncidentPanel}
-          onFocusCity={setFocusCoordinate}
-          onSelectStreamItem={handleSelectIncidentStreamItem}
-          streamItems={resolvedIncidentStreamItems}
-          variant="overlay"
-        />
-      ) : null}
-      {selectedAlertSummary && dockFocusedItem === null ? (
-        <div className="alert-selection-hud">
-          <div className="alert-selection-hud-title">
-            <strong>{selectedAlertSummary.englishName}</strong>
-            <span>{selectedAlertSummary.alertTypeLabel}</span>
-          </div>
-          <div className="alert-selection-hud-meta">
-            <span>{selectedAlertSummary.shelterText}</span>
-            <span>{selectedAlertSummary.ageMinutes} dk önce</span>
-            <span>{selectedAlertSummary.occurredAtText}</span>
-          </div>
-          {selectedAlertSummary.citiesDetail && selectedAlertSummary.citiesDetail.length > 1 && (
-            <div className="alert-hud-cities">
-              {selectedAlertSummary.citiesDetail.map((city, i) => (
-                <button
-                  key={`${city.name}-${i}`}
-                  className="alert-hud-city-chip"
-                  type="button"
-                  onClick={() => setFocusCoordinate({ lat: city.lat, lon: city.lon, name: city.name })}
-                >
-                  {city.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : null}      {selectionHud && manipulationPreview ? (
+      <AlertDrawer
+        collapsed={alertDrawerCollapsed}
+        enabled={alertsEnabled}
+        historyTruncated={historyTruncated}
+        items={drawerItems}
+        onFocusCity={setFocusCoordinate}
+        onSelectItem={handleSelectDrawerItem}
+        onToggleCollapsed={() => setAlertDrawerCollapsed((current) => !current)}
+        selectedKey={selectedDrawerItemKey}
+      />
+      {selectionHud && manipulationPreview ? (
         <div
           className="selection-drag-preview"
           style={{
