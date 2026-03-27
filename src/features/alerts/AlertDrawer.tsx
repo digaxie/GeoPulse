@@ -409,6 +409,10 @@ export function AlertDrawer({
   }, [debouncedQuery, items])
 
   const renderedSelectedKey = useMemo(() => {
+    if (effectiveSelectedKey === null) {
+      return null
+    }
+
     if (filteredItems.some((item) => item.key === effectiveSelectedKey)) {
       return effectiveSelectedKey
     }

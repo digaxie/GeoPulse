@@ -285,7 +285,7 @@ describe('AlertDrawer', () => {
         onFocusCity={vi.fn()}
         onSelectItem={onSelectItem}
         onToggleCollapsed={vi.fn()}
-        selectedKey={`alert:${groupedAlert.id}`}
+        selectedKey={null}
       />,
     )
 
@@ -297,6 +297,7 @@ describe('AlertDrawer', () => {
     await user.click(activeCard as HTMLElement)
 
     expect(onSelectItem).toHaveBeenCalledWith(null)
+    expect(container.querySelectorAll('.alerts-card-active')).toHaveLength(0)
   })
 
   it('renders 60 cards initially, loads more, and keeps selected card visible', async () => {
