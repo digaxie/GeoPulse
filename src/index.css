@@ -4058,9 +4058,9 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   position: absolute;
   top: 1rem;
   bottom: 5.5rem;
-  left: 1rem;
+  left: 3.75rem;
   z-index: 32;
-  width: min(380px, calc(100% - 2rem));
+  width: min(380px, calc(100% - 4.75rem));
   max-width: 380px;
   display: flex;
   flex-direction: column;
@@ -4080,7 +4080,7 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 .alert-drawer-collapsed-handle {
   position: absolute;
   top: 1rem;
-  left: 0;
+  left: 3.25rem;
   z-index: 32;
   display: inline-flex;
   align-items: center;
