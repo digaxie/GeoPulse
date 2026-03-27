@@ -4538,9 +4538,9 @@ export function ConflictMap({
               state.updateSelectedElementNumeric('rotation', currentRotation - HUD_ROTATION_STEP)
             }}
             type="button"
-            title="Sola dÃ¶ndÃ¼r"
+            title="Sola döndür"
           >
-            â†º
+            ↺
           </button>
           {selectionHud.canScale ? (
             <>
@@ -4553,7 +4553,7 @@ export function ConflictMap({
                 .updateSelectedElementNumeric('scale', (selectionHud.scale ?? 1) - 0.15)
             }
             type="button"
-            title="KÃ¼Ã§Ã¼lt"
+            title="Küçült"
           >
             -
           </button>
@@ -4567,7 +4567,7 @@ export function ConflictMap({
                 .updateSelectedElementNumeric('scale', (selectionHud.scale ?? 1) + 0.15)
             }
             type="button"
-            title="BÃ¼yÃ¼t"
+            title="Büyüt"
           >
             +
           </button>
@@ -4585,9 +4585,9 @@ export function ConflictMap({
               state.updateSelectedElementNumeric('rotation', currentRotation + HUD_ROTATION_STEP)
             }}
             type="button"
-            title="SaÄŸa dÃ¶ndÃ¼r"
+            title="Sağa döndür"
           >
-            â†»
+            ↻
           </button>
           <span className="selection-hud-divider" />
           <button
@@ -4596,9 +4596,9 @@ export function ConflictMap({
               useScenarioStore.getState().toggleSelectedLock()
             }}
             type="button"
-            title={selectionHud.locked ? 'Kilidi aÃ§' : 'Kilitle'}
+            title={selectionHud.locked ? 'Kilidi aç' : 'Kilitle'}
           >
-            {selectionHud.locked ? 'Kilitli' : 'AÃ§Ä±k'}
+            {selectionHud.locked ? 'Kilitli' : 'Açık'}
           </button>
           <button
             className="selection-hud-button selection-hud-delete"
@@ -4609,7 +4609,7 @@ export function ConflictMap({
             type="button"
             title="Sil"
           >
-            âœ•
+            ✕
           </button>
           <button
             className="selection-hud-button selection-hud-confirm"
@@ -4619,7 +4619,7 @@ export function ConflictMap({
             type="button"
             title="Tamam"
           >
-            âœ“
+            ✓
           </button>
         </div>
       ) : null}
@@ -4665,9 +4665,9 @@ export function ConflictMap({
               className="inline-text-btn inline-text-cancel"
               type="button"
               onClick={() => setInlineTextInput(null)}
-              title="Ä°ptal"
+              title="İptal"
             >
-              âœ•
+              ✕
             </button>
             <button
               className="inline-text-btn inline-text-confirm"
@@ -4686,7 +4686,7 @@ export function ConflictMap({
               }}
               title="Tamam"
             >
-              âœ“
+              ✓
             </button>
           </div>
         </div>
