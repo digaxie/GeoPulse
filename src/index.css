@@ -2231,18 +2231,51 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   }
 
   .workspace-page .workspace-sidebar-container {
+    flex-direction: column;
+    height: auto;
     min-width: 0;
   }
 
   .workspace-page .sidebar-icon-bar {
-    width: 56px;
-    min-width: 56px;
-    padding-inline: 0.25rem;
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    height: 58px;
+    min-height: 58px;
+    gap: 0.4rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-xl);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(64, 95, 151, 0.42) transparent;
   }
 
   .workspace-page .sidebar-icon-btn {
-    width: 44px;
-    min-height: 48px;
+    min-width: 72px;
+    min-height: 44px;
+    width: auto;
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 0.3rem;
+  }
+
+  .workspace-page .sidebar-icon-btn-label {
+    font-size: 0.6rem;
+  }
+
+  .workspace-page .sidebar-panel {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    height: auto;
+    max-height: calc(100vh - 13rem);
+  }
+
+  .workspace-page .sidebar-icon-bar-spacer,
+  .workspace-page .sidebar-credit {
+    display: none;
   }
 
   .workspace-page .tool-dock-actions {
