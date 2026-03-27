@@ -398,36 +398,29 @@ function buildGroupSearchText(
   ].join(' '))
 }
 
-function groupDrawerItems(items: DrawerCardItem[]) {
-  const sortedItems = sortDrawerItemsByNewest(items)
+function buildGroupedFamilyItems(
+  family: DrawerEventFamily,
+  items: GroupableDrawerCardItem[],
+): Array<DrawerCardItem | DrawerGroupedItem> {
   const groupedItems: Array<DrawerCardItem | DrawerGroupedItem> = []
 
-  for (let index = 0; index < sortedItems.length; index += 1) {
-    const first = sortedItems[index]
+  for (let index = 0; index < items.length; index += 1) {
+    const first = items[index]
     if (!first) {
-      continue
-    }
-
-    const family = getItemFamily(first)
-    if (!family) {
-      groupedItems.push(first)
       continue
     }
 
     const members: GroupableDrawerCardItem[] = [first]
     let nextIndex = index + 1
 
-    while (nextIndex < sortedItems.length) {
-      const candidate = sortedItems[nextIndex]
+    while (nextIndex < items.length) {
+      const candidate = items[nextIndex]
       if (!candidate) {
         break
       }
 
-      if (getItemFamily(candidate) !== family) {
-        break
-      }
-
-      if (first.timestampMs - candidate.timestampMs > DRAWER_GROUPING_WINDOW_MS) {
+      const previousMember = members[members.length - 1] ?? first
+      if (previousMember.timestampMs - candidate.timestampMs > DRAWER_GROUPING_WINDOW_MS) {
         break
       }
 
@@ -454,6 +447,34 @@ function groupDrawerItems(items: DrawerCardItem[]) {
   }
 
   return groupedItems
+}
+
+function groupDrawerItems(items: DrawerCardItem[]) {
+  const sortedItems = sortDrawerItemsByNewest(items)
+  const itemsByFamily = new Map<DrawerEventFamily, GroupableDrawerCardItem[]>()
+  const standaloneItems: Array<DrawerCardItem | DrawerGroupedItem> = []
+
+  for (const item of sortedItems) {
+    const family = getItemFamily(item)
+    if (!family) {
+      standaloneItems.push(item)
+      continue
+    }
+
+    const familyItems = itemsByFamily.get(family)
+    if (familyItems) {
+      familyItems.push(item)
+      continue
+    }
+
+    itemsByFamily.set(family, [item])
+  }
+
+  for (const [family, familyItems] of itemsByFamily.entries()) {
+    standaloneItems.push(...buildGroupedFamilyItems(family, familyItems))
+  }
+
+  return sortDrawerItemsByNewest(standaloneItems)
 }
 
 function buildGroupViewModel(item: DrawerGroupedItem): Extract<DrawerCardViewModel, { kind: 'group' }> {

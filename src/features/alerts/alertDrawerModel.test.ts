@@ -130,6 +130,21 @@ describe('buildDrawerCardViewModels', () => {
     expect(models[0]?.family).toBe('drone')
   })
 
+  it('keeps grouping same-family items even when other families are interleaved in the mixed list', () => {
+    const models = buildDrawerCardViewModels([
+      createRocketAlert('rocket-1', 50_000, 'Confrontation Line', 'Misgav Am'),
+      createSystemItem(21, 'early_warning', 25_000, 'Upper Galilee', 'Nahariya'),
+      createRocketAlert('rocket-2', 10_000, 'Confrontation Line', 'Kiryat Shmona'),
+    ])
+
+    expect(models).toHaveLength(2)
+    expect(models[0]?.kind).toBe('group')
+    expect(models[0]?.family).toBe('rocket')
+    expect(models[1]?.kind).toBe('system')
+    if (models[0]?.kind !== 'group') throw new Error('Expected rocket group')
+    expect(models[0].memberAlertIds).toEqual(['rocket-1', 'rocket-2'])
+  })
+
   it('groups early warning and incident ended events only with their own family', () => {
     const models = buildDrawerCardViewModels([
       createSystemItem(11, 'early_warning', 30_000, 'Western Galilee', 'Nahariya'),
