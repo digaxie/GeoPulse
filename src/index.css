@@ -2240,9 +2240,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .workspace-page .workspace-topbar-meta {
     display: flex;
     flex-wrap: wrap;
-    flex-basis: 100%;
+    flex: 0 1 auto;
+    flex-basis: auto;
     justify-content: flex-start;
-    width: 100%;
+    width: auto;
+    margin-left: auto;
     align-items: center;
     gap: 0.45rem;
   }
