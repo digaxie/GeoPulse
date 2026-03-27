@@ -4651,7 +4651,14 @@ export function ConflictMap({
   )
   const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
 
-  const handleSelectDrawerItem = useCallback((key: string) => {
+  const handleSelectDrawerItem = useCallback((key: string | null) => {
+    if (key === null) {
+      setSelectedDrawerGroupKey(null)
+      setSelectedAlertId(null)
+      setFocusedSystemMessageKey(null)
+      return
+    }
+
     const item = drawerItems.find((candidate) => candidate.key === key)
     if (!item) {
       return

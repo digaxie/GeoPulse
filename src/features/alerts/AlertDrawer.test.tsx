@@ -272,6 +272,33 @@ describe('AlertDrawer', () => {
     expect(onToggleCollapsed).toHaveBeenCalled()
   })
 
+  it('clears selection when the selected card is clicked again', async () => {
+    const user = userEvent.setup()
+    const onSelectItem = vi.fn()
+
+    const { container } = render(
+      <AlertDrawer
+        collapsed={false}
+        enabled
+        historyTruncated={false}
+        items={viewItems}
+        onFocusCity={vi.fn()}
+        onSelectItem={onSelectItem}
+        onToggleCollapsed={vi.fn()}
+        selectedKey={`alert:${groupedAlert.id}`}
+      />,
+    )
+
+    const activeBefore = container.querySelectorAll('.alerts-card-active')
+    expect(activeBefore).toHaveLength(1)
+
+    const activeCard = container.querySelector('.alerts-card-active')
+    expect(activeCard).toBeTruthy()
+    await user.click(activeCard as HTMLElement)
+
+    expect(onSelectItem).toHaveBeenCalledWith(null)
+  })
+
   it('renders 60 cards initially, loads more, and keeps selected card visible', async () => {
     const user = userEvent.setup()
     const bulkItems = buildDrawerCardViewModels(Array.from({ length: 70 }, (_, index) => createAlertItem(index)))

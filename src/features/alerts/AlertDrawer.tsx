@@ -16,7 +16,7 @@ type AlertDrawerProps = {
   items: DrawerCardViewModel[]
   selectedKey: string | null
   onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
-  onSelectItem: (key: string) => void
+  onSelectItem: (key: string | null) => void
   onToggleCollapsed: () => void
 }
 
@@ -363,7 +363,7 @@ export function AlertDrawer({
   onSelectItem,
   onToggleCollapsed,
 }: AlertDrawerProps) {
-  const [localSelectedKey, setLocalSelectedKey] = useState<string | null>(null)
+  const [localSelectedKey, setLocalSelectedKey] = useState<string | null | undefined>(undefined)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
@@ -380,11 +380,23 @@ export function AlertDrawer({
 
   const effectiveSelectedKey = useMemo(() => {
     const hasSelectedKey = selectedKey !== null && items.some((item) => item.key === selectedKey)
+    const hasLocalSelectedKey =
+      typeof localSelectedKey === 'string' && items.some((item) => item.key === localSelectedKey)
+
+    if (hasSelectedKey) {
+      return selectedKey
+    }
+
+    if (localSelectedKey === null) {
+      return null
+    }
+
+    if (hasLocalSelectedKey) {
+      return localSelectedKey
+    }
+
     return (
-      (hasSelectedKey ? selectedKey : null) ??
-      (localSelectedKey && items.some((item) => item.key === localSelectedKey)
-        ? localSelectedKey
-        : (items[0]?.key ?? null))
+      items[0]?.key ?? null
     )
   }, [items, localSelectedKey, selectedKey])
 
@@ -427,10 +439,16 @@ export function AlertDrawer({
 
   const handleSelect = useCallback(
     (key: string) => {
+      if (key === renderedSelectedKey) {
+        setLocalSelectedKey(null)
+        onSelectItem(null)
+        return
+      }
+
       setLocalSelectedKey(key)
       onSelectItem(key)
     },
-    [onSelectItem],
+    [onSelectItem, renderedSelectedKey],
   )
 
   const handleCollapse = useCallback(() => {
