@@ -2193,11 +2193,38 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .workspace-page {
     height: 100vh;
     overflow: hidden;
+    padding: 0.75rem;
+    gap: 0.6rem;
   }
 
   .workspace-page .workspace-shell {
     grid-template-columns: minmax(0, 1fr) clamp(248px, 30vw, 320px) !important;
     overflow: hidden;
+  }
+
+  .workspace-page .workspace-topbar {
+    padding: 0.72rem 0.92rem;
+    gap: 0.65rem;
+  }
+
+  .workspace-page .workspace-topbar-info {
+    gap: 0.06rem;
+    flex: 1 1 auto;
+  }
+
+  .workspace-page .workspace-topbar .eyebrow {
+    margin-bottom: 0.12rem;
+    letter-spacing: 0.14em;
+    font-size: 0.62rem;
+  }
+
+  .workspace-page .workspace-topbar h1 {
+    font-size: clamp(1.08rem, 2.15vw, 1.34rem);
+    line-height: 1.02;
+  }
+
+  .workspace-page .workspace-topbar .lede {
+    font-size: 0.84rem;
   }
 
   .workspace-page .workspace-map-panel {
@@ -2211,20 +2238,25 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   }
 
   .workspace-page .workspace-topbar-meta {
-    display: grid;
-    grid-template-columns: max-content max-content max-content;
+    display: flex;
+    flex-wrap: wrap;
     flex-basis: 100%;
     justify-content: flex-start;
     width: 100%;
     align-items: center;
+    gap: 0.45rem;
   }
 
   .workspace-page .workspace-topbar-meta > .secondary-button {
     width: auto;
+    min-height: 40px;
+    padding: 0.48rem 0.95rem;
+    font-size: 0.82rem;
   }
 
   .workspace-page .lock-pill {
-    grid-column: 1 / -1;
+    grid-column: auto;
+    max-width: min(100%, 320px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2276,6 +2308,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .workspace-page .sidebar-icon-bar-spacer,
   .workspace-page .sidebar-credit {
     display: none;
+  }
+
+  .workspace-page .save-badge {
+    min-width: 0;
+    padding: 0.28rem 0.72rem;
+    font-size: 0.64rem;
   }
 
   .workspace-page .tool-dock-actions {
