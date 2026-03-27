@@ -140,6 +140,24 @@ describe('migrateScenarioDocument', () => {
     })
   })
 
+  it('defaults missing uiTheme to light for legacy documents while preserving basemap theme', () => {
+    const document = createDefaultScenarioDocument()
+    const legacyDocument = {
+      ...document,
+      stylePrefs: {
+        ...document.stylePrefs,
+        backgroundPreset: 'paper_light' as const,
+      },
+    }
+
+    delete (legacyDocument.stylePrefs as { uiTheme?: unknown }).uiTheme
+
+    const migrated = migrateScenarioDocument(legacyDocument)
+
+    expect(migrated.stylePrefs.uiTheme).toBe('light')
+    expect(migrated.stylePrefs.backgroundPreset).toBe('paper_light')
+  })
+
   it('upgrades legacy alert audio settings into editor and presentation channels', () => {
     const document = createDefaultScenarioDocument()
     const migrated = migrateScenarioDocument({

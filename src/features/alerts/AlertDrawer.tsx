@@ -488,21 +488,20 @@ export function AlertDrawer({
     }, SEARCH_DEBOUNCE_MS)
   }, [])
 
-  if (collapsed) {
-    return (
+  return (
+    <>
       <button
         aria-label="Alarm drawer'ini ac"
-        className="alert-drawer-collapsed-handle"
+        className={`alert-drawer-collapsed-handle${collapsed ? ' is-visible' : ''}`}
         onClick={handleExpand}
         type="button"
       >
         {'>'}
       </button>
-    )
-  }
-
-  return (
-    <aside className="alert-drawer">
+      <aside
+        aria-hidden={collapsed}
+        className={`alert-drawer${collapsed ? ' alert-drawer-collapsed' : ' alert-drawer-open'}`}
+      >
       <div className="alert-drawer-header">
         <button
           aria-label="Alarm drawer'ini kapat"
@@ -556,6 +555,7 @@ export function AlertDrawer({
           ) : null}
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   )
 }

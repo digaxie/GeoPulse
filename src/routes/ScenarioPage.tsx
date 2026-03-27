@@ -7,6 +7,7 @@ import { MapErrorBoundary } from '@/components/map/MapErrorBoundary'
 import { AssetLibraryPanel } from '@/components/panels/AssetLibraryPanel'
 import { BriefingPanel } from '@/components/panels/BriefingPanel'
 import { InspectorPanel } from '@/components/panels/InspectorPanel'
+import { SharePanel } from '@/components/panels/SharePanel'
 import { TextControls } from '@/components/panels/TextControls'
 import { ToolDock } from '@/components/panels/ToolDock'
 import { VersionHistoryPanel } from '@/components/panels/VersionHistoryPanel'
@@ -152,6 +153,7 @@ export function ScenarioPage() {
   const setBasemapPreset = useScenarioStore((state) => state.setBasemapPreset)
   const setLabelOption = useScenarioStore((state) => state.setLabelOption)
   const setStylePref = useScenarioStore((state) => state.setStylePref)
+  const setUiTheme = useScenarioStore((state) => state.setUiTheme)
   const createSlideFromCurrentView = useScenarioStore((state) => state.createSlideFromCurrentView)
   const duplicateSlide = useScenarioStore((state) => state.duplicateSlide)
   const deleteSlide = useScenarioStore((state) => state.deleteSlide)
@@ -179,7 +181,6 @@ export function ScenarioPage() {
   const { assets, isLoading: loadingAssets, error: assetsError, uploadAsset } = useAssets()
 
   const runtime = useScenarioRuntime({ mode: 'editor', scenarioId })
-  const shareSectionRef = useRef<HTMLDivElement | null>(null)
   const sidebarIconBarRef = useRef<HTMLElement | null>(null)
 
   const [activePanel, setActivePanel] = useState<PanelKey | null>('tools')
@@ -425,8 +426,10 @@ export function ScenarioPage() {
           ? 'X Hata'
           : '- Bekliyor'
 
+  const isDarkTheme = document.stylePrefs.uiTheme === 'dark'
+
   return (
-    <main className="workspace-page">
+    <main className="workspace-page" data-theme={document.stylePrefs.uiTheme}>
       <header className="workspace-topbar">
         <div className="workspace-topbar-info">
           <p className="eyebrow">GeoPulse Editor</p>
@@ -446,6 +449,21 @@ export function ScenarioPage() {
 
         <div className="workspace-topbar-meta">
           <span className={`save-badge save-${saveState}`}>{saveBadgeLabel}</span>
+          <button
+            aria-pressed={isDarkTheme}
+            className={`secondary-button theme-toggle-button${isDarkTheme ? ' theme-toggle-button--active' : ''}`}
+            onClick={() => setUiTheme(isDarkTheme ? 'light' : 'dark')}
+            type="button"
+          >
+            <span aria-hidden="true" className="theme-toggle-button-track">
+              <span className="theme-toggle-button-thumb" />
+              <span className="theme-toggle-button-glow" />
+            </span>
+            <span className="theme-toggle-button-copy">
+              <span className="theme-toggle-button-label">Tema</span>
+              <span className="theme-toggle-button-mode">{isDarkTheme ? 'Koyu' : 'Acik'}</span>
+            </span>
+          </button>
           {lock ? (
             <span className="lock-pill">
               Kilit {lock.holderUsername} · {formatRelativeDate(lock.expiresAt)}
@@ -696,7 +714,7 @@ export function ScenarioPage() {
               </div>
             ) : null}
 
-            {activePanel === 'settings' || activePanel === 'share' ? (
+            {activePanel === 'settings' ? (
               <div className="sidebar-panel-inner sidebar-panel-inner--flush">
                 <InspectorPanel
                   activeSlideTitle={activeBriefingSlide?.title ?? null}
@@ -705,7 +723,6 @@ export function ScenarioPage() {
                   hasHgmAtlas={appEnv.useHgmAtlas}
                   labelOptions={document.labelOptions}
                   onBringForward={bringSelectedForward}
-                  onRotateViewerSlug={handleRotateViewerSlug}
                   onSendBackward={sendSelectedBackward}
                   onSetBasemapPreset={setBasemapPreset}
                   onSetSelectedElementVisibleOnActiveSlide={(visible) => {
@@ -738,11 +755,19 @@ export function ScenarioPage() {
                       element.kind === 'text' ? { ...element, [field]: value } : element,
                     )
                   }}
-                  scenarioId={scenarioId}
                   selectedElement={selectedElement}
                   selectedElementVisibleOnActiveSlide={selectedElementVisibleOnActiveSlide}
-                  shareSectionRef={shareSectionRef}
                   stylePrefs={document.stylePrefs}
+                />
+              </div>
+            ) : null}
+
+            {activePanel === 'share' ? (
+              <div className="sidebar-panel-inner sidebar-panel-inner--flush">
+                <SharePanel
+                  canEdit={!isReadOnly}
+                  onRotateViewerSlug={handleRotateViewerSlug}
+                  scenarioId={scenarioId}
                   viewerSlug={viewerSlug}
                 />
               </div>

@@ -1,14 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-
 import type { ScenarioDocument, ScenarioElement } from '@/features/scenario/model'
 import { TextControls } from '@/components/panels/TextControls'
-import { backendClient } from '@/lib/backend'
-import { withBasePath } from '@/lib/paths'
-import { copyText } from '@/lib/utils'
 
 type InspectorPanelProps = {
-  scenarioId: string | null
-  viewerSlug: string | null
   selectedElement: ScenarioElement | null
   activeSlideTitle?: string | null
   selectedElementVisibleOnActiveSlide?: boolean | null
@@ -17,7 +10,6 @@ type InspectorPanelProps = {
   basemap: ScenarioDocument['basemap']
   labelOptions: ScenarioDocument['labelOptions']
   stylePrefs: ScenarioDocument['stylePrefs']
-  shareSectionRef?: React.RefObject<HTMLDivElement | null>
   onSetBasemapPreset: (preset: ScenarioDocument['basemap']['preset']) => void
   onToggleLabelOption: <K extends keyof ScenarioDocument['labelOptions']>(
     key: K,
@@ -35,15 +27,15 @@ type InspectorPanelProps = {
   onToggleLock: () => void
   onBringForward: () => void
   onSendBackward: () => void
-  onRotateViewerSlug: () => Promise<void>
   onUpdateText: (value: string) => void
-  onUpdateTextProperty: (field: 'fontSize' | 'fontWeight' | 'align', value: number | string) => void
+  onUpdateTextProperty: (
+    field: 'fontSize' | 'fontWeight' | 'align',
+    value: number | string,
+  ) => void
   onSetSelectedElementVisibleOnActiveSlide?: (visible: boolean) => void
 }
 
 export function InspectorPanel({
-  scenarioId,
-  viewerSlug,
   selectedElement,
   activeSlideTitle = null,
   selectedElementVisibleOnActiveSlide = null,
@@ -52,7 +44,6 @@ export function InspectorPanel({
   basemap,
   labelOptions,
   stylePrefs,
-  shareSectionRef,
   onSetBasemapPreset,
   onToggleLabelOption,
   onSetStylePref,
@@ -61,63 +52,28 @@ export function InspectorPanel({
   onToggleLock,
   onBringForward,
   onSendBackward,
-  onRotateViewerSlug,
   onUpdateText,
   onUpdateTextProperty,
   onSetSelectedElementVisibleOnActiveSlide,
 }: InspectorPanelProps) {
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current)
-      }
-    }
-  }, [])
-
   const isDeFactoBasemap = basemap.preset === 'de_facto_world'
   const isOpenFreeMapBasemap =
     basemap.preset === 'openfreemap_liberty' ||
     basemap.preset === 'openfreemap_bright' ||
     basemap.preset === 'openfreemap_positron'
-  const viewerPath = viewerSlug ? withBasePath(`/view/${viewerSlug}`) : null
-  const viewerUrl =
-    viewerPath && typeof window !== 'undefined'
-      ? new URL(viewerPath, window.location.origin).toString()
-      : viewerPath
-
-  async function handleCopyViewerLink() {
-    if (!viewerUrl) {
-      return
-    }
-
-    try {
-      await copyText(viewerUrl)
-      setCopyState('copied')
-    } catch {
-      setCopyState('error')
-    } finally {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current)
-      }
-      copyTimeoutRef.current = setTimeout(() => setCopyState('idle'), 1800)
-    }
-  }
 
   return (
     <section className="panel-card">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Ayarlar</p>
-          <h3>{selectedElement ? `Seçili: ${selectedElement.kind}` : 'Seçim yok'}</h3>
+          <h3>{selectedElement ? `Secili: ${selectedElement.kind}` : 'Secim yok'}</h3>
         </div>
       </div>
 
       <div className="toggle-stack">
         <label className="stack-field">
-          <span>Harita kaynağı</span>
+          <span>Harita kaynagi</span>
           <select
             className="panel-input panel-select"
             disabled={!canEdit}
@@ -128,20 +84,33 @@ export function InspectorPanel({
             }
             value={basemap.preset}
           >
-            <option value="de_facto_world">OpenLayers De-facto Dünya</option>
+            <option value="de_facto_world">OpenLayers De-facto Dunya</option>
             <option value="openfreemap_liberty">OpenFreeMap Liberty</option>
             <option value="openfreemap_bright">OpenFreeMap Bright</option>
             <option value="openfreemap_positron">OpenFreeMap Positron</option>
-
             <option value="osm_standard">OpenStreetMap Standard</option>
             <option value="osm_humanitarian">OpenStreetMap Humanitarian</option>
             <option value="open_topo">OpenTopoMap</option>
             {hasHgmAtlas ? <option value="hgm_temel">HGM ATLAS Temel</option> : null}
             {hasHgmAtlas ? <option value="hgm_gece">HGM ATLAS Gece</option> : null}
             {hasHgmAtlas ? <option value="hgm_siyasi">HGM ATLAS Siyasi</option> : null}
-            {hasHgmAtlas ? <option value="hgm_yukseklik">HGM ATLAS Yükseklik</option> : null}
+            {hasHgmAtlas ? <option value="hgm_yukseklik">HGM ATLAS Yukseklik</option> : null}
             {hasHgmAtlas ? <option value="hgm_uydu">HGM ATLAS Uydu</option> : null}
           </select>
+        </label>
+
+        <label className="switch-row">
+          <span>Haritayi dark goster</span>
+          <input
+            checked={stylePrefs.backgroundPreset === 'midnight'}
+            onChange={(event) =>
+              onSetStylePref(
+                'backgroundPreset',
+                event.target.checked ? 'midnight' : 'broadcast_blue',
+              )
+            }
+            type="checkbox"
+          />
         </label>
 
         {isOpenFreeMapBasemap ? (
@@ -170,14 +139,14 @@ export function InspectorPanel({
                 }
                 value={stylePrefs.backgroundPreset}
               >
-                <option value="broadcast_blue">Yayın mavisi</option>
-                <option value="paper_light">Açık atlas</option>
-                <option value="midnight">Gece masası</option>
+                <option value="broadcast_blue">Yayin mavisi</option>
+                <option value="paper_light">Acik atlas</option>
+                <option value="midnight">Gece masasi</option>
               </select>
             </label>
 
             <label className="switch-row">
-              <span>Tartışmalı bölgeler</span>
+              <span>Tartismali bolgeler</span>
               <input
                 checked={labelOptions.showDisputedOverlay}
                 onChange={(event) =>
@@ -188,7 +157,7 @@ export function InspectorPanel({
             </label>
 
             <label className="switch-row">
-              <span>İl ve eyalet sınırları</span>
+              <span>Il ve eyalet sinirlari</span>
               <input
                 checked={labelOptions.showAdmin1}
                 onChange={(event) => onToggleLabelOption('showAdmin1', event.target.checked)}
@@ -197,7 +166,7 @@ export function InspectorPanel({
             </label>
 
             <label className="switch-row">
-              <span>Şehir adları</span>
+              <span>Sehir adlari</span>
               <input
                 checked={labelOptions.showCities}
                 onChange={(event) => onToggleLabelOption('showCities', event.target.checked)}
@@ -208,48 +177,7 @@ export function InspectorPanel({
         ) : null}
       </div>
 
-      <div className="share-box jump-target" ref={shareSectionRef}>
-        <p className="share-box-label">Sunum bağlantısı</p>
-        <a
-          className="inline-link"
-          href={viewerUrl ?? '#'}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {viewerUrl ?? 'Bağlantı hazır değil'}
-        </a>
-        <div className="button-row">
-          <button
-            className="secondary-button"
-            disabled={!viewerUrl}
-            onClick={() => void handleCopyViewerLink()}
-            type="button"
-          >
-            Bağlantıyı kopyala
-          </button>
-          <button
-            className="secondary-button"
-            disabled={!canEdit || !scenarioId}
-            onClick={() => void onRotateViewerSlug()}
-            type="button"
-          >
-            Sunum bağlantısını yenile
-          </button>
-        </div>
-        {copyState === 'copied' ? (
-          <p className="share-box-note">Sunum bağlantısı panoya kopyalandı.</p>
-        ) : null}
-        {copyState === 'error' ? (
-          <p className="share-box-note">Bağlantı kopyalanamadı.</p>
-        ) : null}
-        {backendClient.mode === 'mock' ? (
-          <p className="share-box-note">
-            Mock modda aynı cihazdaki sekmeler arası canlı güncelleme açıktır.
-          </p>
-        ) : null}
-      </div>
-
-      {!selectedElement ? <p className="panel-empty">Harita üzerinden bir öğe seçin.</p> : null}
+      {!selectedElement ? <p className="panel-empty">Harita uzerinden bir oge secin.</p> : null}
 
       {selectedElement ? (
         <div className="inspector-fields">
@@ -292,16 +220,16 @@ export function InspectorPanel({
                 align={selectedElement.align}
                 textColor={selectedElement.style.textColor}
                 disabled={!canEdit}
-                onChangeFontSize={(v) => onUpdateTextProperty('fontSize', v)}
-                onChangeFontWeight={(v) => onUpdateTextProperty('fontWeight', v)}
-                onChangeAlign={(v) => onUpdateTextProperty('align', v)}
-                onChangeTextColor={(v) => onUpdateStyle('textColor', v)}
+                onChangeFontSize={(value) => onUpdateTextProperty('fontSize', value)}
+                onChangeFontWeight={(value) => onUpdateTextProperty('fontWeight', value)}
+                onChangeAlign={(value) => onUpdateTextProperty('align', value)}
+                onChangeTextColor={(value) => onUpdateStyle('textColor', value)}
               />
             </>
           ) : null}
 
           <label>
-            <span>Dönüş</span>
+            <span>Donus</span>
             <input
               max={6.3}
               min={-6.3}
@@ -313,7 +241,7 @@ export function InspectorPanel({
           </label>
 
           <label>
-            <span>Ölçek</span>
+            <span>Olcek</span>
             <input
               max={3}
               min={0.4}
@@ -325,7 +253,7 @@ export function InspectorPanel({
           </label>
 
           <label>
-            <span>Çizgi kalınlığı</span>
+            <span>Cizgi kalinligi</span>
             <input
               max={10}
               min={1}
@@ -337,7 +265,7 @@ export function InspectorPanel({
           </label>
 
           <label>
-            <span>Katman sırası</span>
+            <span>Katman sirasi</span>
             <input
               max={40}
               min={1}
@@ -360,13 +288,13 @@ export function InspectorPanel({
 
           <div className="inspector-actions">
             <button className="secondary-button" onClick={onBringForward} type="button">
-              Üste al
+              Uste al
             </button>
             <button className="secondary-button" onClick={onSendBackward} type="button">
               Alta al
             </button>
             <button className="ghost-button" onClick={onToggleLock} type="button">
-              {selectedElement.locked ? 'Kilitli · Kilidi aç' : 'Açık · Kilitle'}
+              {selectedElement.locked ? 'Kilitli · Kilidi ac' : 'Acik · Kilitle'}
             </button>
           </div>
         </div>

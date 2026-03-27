@@ -9,6 +9,8 @@ describe('scenarioDocumentSchema', () => {
     const parsed = scenarioDocumentSchema.parse(document)
 
     expect(parsed.basemap.preset).toBe('openfreemap_liberty')
+    expect(parsed.stylePrefs.uiTheme).toBe('dark')
+    expect(parsed.stylePrefs.backgroundPreset).toBe('midnight')
     expect(parsed.elements.length).toBe(0)
     expect(parsed.labelOptions.showDisputedOverlay).toBe(true)
     expect(parsed.scene.activeContinents).toEqual([])

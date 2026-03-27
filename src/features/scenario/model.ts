@@ -118,6 +118,8 @@ export const backgroundPresetSchema = z.enum([
   'midnight',
 ])
 
+export const uiThemeSchema = z.enum(['light', 'dark'])
+
 export const landPaletteSchema = z.enum(['broadcast', 'atlas', 'muted'])
 
 export const scenarioElementSchema = z.discriminatedUnion('kind', [
@@ -248,6 +250,7 @@ export const scenarioDocumentSchema = z.object({
   elements: z.array(scenarioElementSchema).default([]),
   selectedTool: scenarioToolSchema.default('select'),
   stylePrefs: z.object({
+    uiTheme: uiThemeSchema.default('light'),
     backgroundPreset: backgroundPresetSchema.default('broadcast_blue'),
     oceanColor: z.string().default('#a7d1ff'),
     landPalette: landPaletteSchema.default('broadcast'),

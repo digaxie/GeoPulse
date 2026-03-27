@@ -336,6 +336,21 @@ describe('useScenarioStore', () => {
     })
   })
 
+  it('toggles uiTheme and keeps the map preset in sync with the header behavior', () => {
+    const store = useScenarioStore.getState()
+
+    store.setStylePref('backgroundPreset', 'paper_light')
+    store.setUiTheme('dark')
+
+    expect(useScenarioStore.getState().document.stylePrefs.uiTheme).toBe('dark')
+    expect(useScenarioStore.getState().document.stylePrefs.backgroundPreset).toBe('midnight')
+
+    store.setUiTheme('light')
+
+    expect(useScenarioStore.getState().document.stylePrefs.uiTheme).toBe('light')
+    expect(useScenarioStore.getState().document.stylePrefs.backgroundPreset).toBe('broadcast_blue')
+  })
+
   it('blocks launch commands when the target is out of range', () => {
     const store = useScenarioStore.getState()
     store.setActiveMissile('iran_fateh_110')

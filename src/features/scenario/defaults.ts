@@ -25,7 +25,8 @@ export function createDefaultScenarioDocument(): ScenarioDocument {
       focusPreset: null,
     },
     stylePrefs: {
-      backgroundPreset: 'broadcast_blue',
+      uiTheme: 'dark',
+      backgroundPreset: 'midnight',
       oceanColor: '#a9d6ff',
       landPalette: 'broadcast',
       performanceMode: false,

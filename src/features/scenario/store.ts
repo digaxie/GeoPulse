@@ -144,6 +144,7 @@ type ScenarioStore = {
     key: K,
     value: ScenarioDocument['stylePrefs'][K],
   ) => void
+  setUiTheme: (theme: ScenarioDocument['stylePrefs']['uiTheme']) => void
   backfillUploadedAssetSnapshots: (assets: AssetDefinition[]) => void
   addElement: (element: ScenarioElement) => void
   addAssetElement: (
@@ -1156,6 +1157,32 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
         { trackHistory: false },
       ),
     }))
+  },
+
+  setUiTheme(theme) {
+    set((current) => {
+      const nextBackgroundPreset =
+        theme === 'dark'
+          ? 'midnight'
+          : current.document.stylePrefs.backgroundPreset === 'midnight'
+            ? 'broadcast_blue'
+            : current.document.stylePrefs.backgroundPreset
+
+      return {
+        ...applyMutation(
+          current,
+          {
+            ...current.document,
+            stylePrefs: {
+              ...current.document.stylePrefs,
+              uiTheme: theme,
+              backgroundPreset: nextBackgroundPreset,
+            },
+          },
+          { trackHistory: false },
+        ),
+      }
+    })
   },
 
   backfillUploadedAssetSnapshots(assets) {

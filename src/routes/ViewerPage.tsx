@@ -65,7 +65,7 @@ export function ViewerPage() {
   }
 
   return (
-    <main className="viewer-page">
+    <main className="viewer-page" data-theme={scenarioDocument.stylePrefs.uiTheme}>
       <header className="viewer-header">
         <div>
           <p className="eyebrow">GeoPulse Sunum</p>
