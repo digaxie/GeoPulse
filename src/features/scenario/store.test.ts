@@ -332,6 +332,7 @@ describe('useScenarioStore', () => {
       bannerAutoDismissSec: 15,
       sharedSelectedAlertId: null,
       sharedFocusedSystemMessageKey: null,
+      sharedDrawerSelectionKey: null,
     })
   })
 

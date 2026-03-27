@@ -136,6 +136,7 @@ describe('migrateScenarioDocument', () => {
       bannerAutoDismissSec: 15,
       sharedSelectedAlertId: null,
       sharedFocusedSystemMessageKey: null,
+      sharedDrawerSelectionKey: null,
     })
   })
 
@@ -160,6 +161,7 @@ describe('migrateScenarioDocument', () => {
       bannerAutoDismissSec: 15,
       sharedSelectedAlertId: null,
       sharedFocusedSystemMessageKey: null,
+      sharedDrawerSelectionKey: null,
     })
   })
 

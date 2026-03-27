@@ -190,6 +190,7 @@ export const scenarioAlertSettingsSchema = z
     bannerAutoDismissSec: z.number().min(5).max(120).optional(),
     sharedSelectedAlertId: z.string().nullable().optional(),
     sharedFocusedSystemMessageKey: z.string().nullable().optional(),
+    sharedDrawerSelectionKey: z.string().nullable().optional(),
     sharedFocusedSystemMessageId: z.number().int().nullable().optional(),
     soundEnabled: z.boolean().optional(),
     volume: z.number().min(0).max(1).optional(),
@@ -214,6 +215,9 @@ export const scenarioAlertSettingsSchema = z
       sharedFocusedSystemMessageKey:
         input.sharedFocusedSystemMessageKey ??
         DEFAULT_SCENARIO_ALERT_SETTINGS.sharedFocusedSystemMessageKey,
+      sharedDrawerSelectionKey:
+        input.sharedDrawerSelectionKey ??
+        DEFAULT_SCENARIO_ALERT_SETTINGS.sharedDrawerSelectionKey,
     }
   })
 export const briefingSlideSchema = z.object({

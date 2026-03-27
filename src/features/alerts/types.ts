@@ -14,6 +14,7 @@ export type ScenarioAlertSettings = {
   bannerAutoDismissSec: number
   sharedSelectedAlertId: string | null
   sharedFocusedSystemMessageKey: string | null
+  sharedDrawerSelectionKey: string | null
 }
 
 export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
@@ -26,6 +27,7 @@ export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
   bannerAutoDismissSec: 15,
   sharedSelectedAlertId: null,
   sharedFocusedSystemMessageKey: null,
+  sharedDrawerSelectionKey: null,
 }
 
 export const MIN_ALERT_RETENTION_MS = 30_000

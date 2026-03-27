@@ -117,6 +117,7 @@ type ScenarioStore = {
   setSharedAlertPresentationState: (input: {
     selectedAlertId: string | null
     focusedSystemMessageKey: string | null
+    drawerSelectionKey: string | null
   }) => void
   toggleMissileSelection: (missileId: string) => void
   setActiveMissile: (missileId: string | null) => void
@@ -815,7 +816,8 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
       const alertsState = getAlertSettings(current.document)
       if (
         alertsState.sharedSelectedAlertId === input.selectedAlertId &&
-        alertsState.sharedFocusedSystemMessageKey === input.focusedSystemMessageKey
+        alertsState.sharedFocusedSystemMessageKey === input.focusedSystemMessageKey &&
+        alertsState.sharedDrawerSelectionKey === input.drawerSelectionKey
       ) {
         return current
       }
@@ -829,6 +831,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
               ...alertsState,
               sharedSelectedAlertId: input.selectedAlertId,
               sharedFocusedSystemMessageKey: input.focusedSystemMessageKey,
+              sharedDrawerSelectionKey: input.drawerSelectionKey,
             },
           },
           { trackHistory: false },

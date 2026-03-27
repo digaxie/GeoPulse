@@ -24,6 +24,7 @@ describe('scenarioDocumentSchema', () => {
       bannerAutoDismissSec: 15,
       sharedSelectedAlertId: null,
       sharedFocusedSystemMessageKey: null,
+      sharedDrawerSelectionKey: null,
     })
     expect(parsed.missiles).toEqual({
       selectedMissileIds: [],

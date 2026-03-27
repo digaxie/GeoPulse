@@ -47,6 +47,7 @@ describe('alert presentation helpers', () => {
           bannerAutoDismissSec: 15,
           sharedSelectedAlertId: null,
           sharedFocusedSystemMessageKey: null,
+          sharedDrawerSelectionKey: null,
         },
         'presentation',
       ),

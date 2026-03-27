@@ -82,6 +82,26 @@ const items: DrawerCardItem[] = [
   },
 ]
 const viewItems = buildDrawerCardViewModels(items)
+const groupedRocketItems = buildDrawerCardViewModels([
+  {
+    key: `alert:${groupedAlert.id}`,
+    kind: 'alert',
+    timestampMs: groupedAlert.occurredAtMs,
+    isLive: true,
+    alert: groupedAlert,
+  },
+  {
+    key: `alert:${singleCityAlert.id}`,
+    kind: 'alert',
+    timestampMs: groupedAlert.occurredAtMs - 30_000,
+    isLive: false,
+    alert: {
+      ...singleCityAlert,
+      occurredAtMs: groupedAlert.occurredAtMs - 30_000,
+      fetchedAtMs: groupedAlert.fetchedAtMs - 30_000,
+    },
+  },
+])
 
 function formatExpectedDrawerClock(timestampMs: number) {
   const parts = new Intl.DateTimeFormat('tr-TR', {
@@ -120,7 +140,7 @@ function formatExpectedDrawerDate(timestampMs: number) {
 }
 
 function createAlertItem(index: number): DrawerCardItem {
-  const occurredAtMs = Date.UTC(2026, 2, 26, 15, 0, 0) - index * 60_000
+  const occurredAtMs = Date.UTC(2026, 2, 26, 15, 0, 0) - index * 61_000
   return {
     key: `alert:bulk-${index}`,
     kind: 'alert',
@@ -306,4 +326,25 @@ describe('AlertDrawer', () => {
 
     expect(screen.getByText('Arama ile eşleşen olay bulunamadı.')).toBeInTheDocument()
   }, 15000)
+
+  it('renders grouped cards and expands group members newest-first', () => {
+    render(
+      <AlertDrawer
+        collapsed={false}
+        enabled
+        historyTruncated={false}
+        items={groupedRocketItems}
+        onFocusCity={vi.fn()}
+        onSelectItem={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+        selectedKey={groupedRocketItems[0]?.key ?? null}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Alarm olayi:/i })).toBeInTheDocument()
+    expect(screen.getByText(/2 olay/i)).toBeInTheDocument()
+
+    expect(screen.getAllByText('Confrontation Line').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Upper Galilee').length).toBeGreaterThan(0)
+  })
 })

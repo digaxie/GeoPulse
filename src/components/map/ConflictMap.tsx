@@ -46,6 +46,7 @@ import {
 import { createAlertLayer, type AlertBindings } from '@/features/alerts/AlertMapLayer'
 import {
   type AlertAudioRole,
+  type AlertCityDetail,
   type AlertFeedStatus,
   DEFAULT_SCENARIO_ALERT_SETTINGS,
   getAlertAudioSettingsForRole,
@@ -67,6 +68,7 @@ import {
   fetchTzevaadomHistory,
   getThreatLabel,
   getTzevaadomAlertInstanceId,
+  type TzevaadomSystemMessage,
 } from '@/features/alerts/tzevaadomService'
 import { toUploadedAssetSnapshot } from '@/features/assets/assetSnapshots'
 import { findSeedAssetById } from '@/features/assets/seedAssets'
@@ -404,6 +406,50 @@ function hasUsableAlertCoordinate(lat: number, lon: number) {
     lon <= 180 &&
     !(lat === 0 && lon === 0)
   )
+}
+
+function collectAlertFocusPoints(alerts: RocketAlert[]) {
+  const points: [number, number][] = []
+
+  for (const alert of alerts) {
+    const groupedCities =
+      alert.citiesDetail?.filter((city) => hasUsableAlertCoordinate(city.lat, city.lon)) ?? []
+
+    if (groupedCities.length > 0) {
+      for (const city of groupedCities) {
+        points.push([city.lon, city.lat])
+      }
+      continue
+    }
+
+    if (hasUsableAlertCoordinate(alert.lat, alert.lon)) {
+      points.push([alert.lon, alert.lat])
+    }
+  }
+
+  return points
+}
+
+function collectWarningCities(messages: TzevaadomSystemMessage[]): AlertCityDetail[] {
+  const cities: AlertCityDetail[] = []
+
+  for (const message of messages) {
+    for (const city of message.citiesEnriched ?? []) {
+      if (!hasUsableAlertCoordinate(city.lat ?? Number.NaN, city.lng ?? Number.NaN)) {
+        continue
+      }
+
+      cities.push({
+        name: city.en || city.he,
+        lat: city.lat!,
+        lon: city.lng!,
+        zone: city.zone_en || '',
+        countdown: city.countdown ?? 0,
+      })
+    }
+  }
+
+  return cities
 }
 
 function getStringProperty(
@@ -979,6 +1025,7 @@ export function ConflictMap({
   const [tabLifecycleState, setTabLifecycleState] = useState<TabMapLifecycleState>('active')
   const [alertAudioUnlockState, setAlertAudioUnlockState] = useState<AlertAudioUnlockState>('locked')
   const [alertDrawerCollapsed, setAlertDrawerCollapsed] = useState(false)
+  const [selectedDrawerGroupKey, setSelectedDrawerGroupKey] = useState<string | null>(null)
   const [inlineTextInput, setInlineTextInput] = useState<{
     coordinate: [number, number]
     text: string
@@ -1040,6 +1087,114 @@ export function ConflictMap({
   const openFreeMapRequestIdRef = useRef(0)
   const shownMissileRangeIdsRef = useRef<Map<string, string>>(new Map())
   const focusedAlertIdRef = useRef<string | null>(null)
+  const focusedDrawerGroupKeyRef = useRef<string | null>(null)
+  const focusedWarningSelectionKeyRef = useRef<string | null>(null)
+
+  const drawerItems = useMemo<DrawerCardViewModel[]>(() => {
+    const activeAlertIds = new Set(alerts.map((alert) => alert.id))
+    const nextItems: DrawerCardItem[] = [
+      ...historyAlerts.map((alert) => ({
+        key: `alert:${alert.id}`,
+        kind: 'alert' as const,
+        timestampMs: alert.occurredAtMs,
+        isLive: activeAlertIds.has(alert.id),
+        alert,
+      })),
+      ...systemMessages
+        .filter((message) => isIncidentStreamSystemMessage(message))
+        .map((message) => ({
+          key: `system:${getSystemMessageStreamKey(message)}`,
+          kind: 'system' as const,
+          timestampMs: message.receivedAtMs,
+          isLive: false,
+          message,
+        })),
+    ]
+
+    nextItems.sort((left, right) => {
+      if (right.timestampMs !== left.timestampMs) {
+        return right.timestampMs - left.timestampMs
+      }
+
+      return right.key.localeCompare(left.key, 'en')
+    })
+
+    return buildDrawerCardViewModels(nextItems.slice(0, 1000))
+  }, [alerts, historyAlerts, systemMessages])
+
+  const selectedGroupedDrawerItem = useMemo(
+    () =>
+      selectedDrawerGroupKey
+        ? drawerItems.find(
+            (item): item is Extract<DrawerCardViewModel, { kind: 'group' }> =>
+              item.kind === 'group' && item.key === selectedDrawerGroupKey,
+          ) ?? null
+        : null,
+    [drawerItems, selectedDrawerGroupKey],
+  )
+
+  const selectedGroupAlertMembers = useMemo(() => {
+    if (
+      !selectedGroupedDrawerItem ||
+      (selectedGroupedDrawerItem.family !== 'rocket' && selectedGroupedDrawerItem.family !== 'drone')
+    ) {
+      return [] as RocketAlert[]
+    }
+
+    const alertsById = new Map<string, RocketAlert>()
+    for (const alert of historyAlerts) {
+      alertsById.set(alert.id, alert)
+    }
+    for (const alert of alerts) {
+      alertsById.set(alert.id, alert)
+    }
+
+    return selectedGroupedDrawerItem.memberAlertIds
+      .map((alertId) => alertsById.get(alertId) ?? null)
+      .filter((alert): alert is RocketAlert => alert !== null)
+  }, [alerts, historyAlerts, selectedGroupedDrawerItem])
+
+  const selectedGroupSystemMembers = useMemo(() => {
+    if (
+      !selectedGroupedDrawerItem ||
+      (selectedGroupedDrawerItem.family !== 'early_warning' &&
+        selectedGroupedDrawerItem.family !== 'incident_ended')
+    ) {
+      return [] as TzevaadomSystemMessage[]
+    }
+
+    const messagesByKey = new Map(
+      systemMessages.map((message) => [getSystemMessageStreamKey(message), message]),
+    )
+
+    return selectedGroupedDrawerItem.memberSystemMessageKeys
+      .map((messageKey) => messagesByKey.get(messageKey) ?? null)
+      .filter((message): message is TzevaadomSystemMessage => message !== null)
+  }, [selectedGroupedDrawerItem, systemMessages])
+
+  const selectedGroupWarningCities = useMemo(
+    () => collectWarningCities(selectedGroupSystemMembers),
+    [selectedGroupSystemMembers],
+  )
+
+  const selectedDrawerItemKey = useMemo(() => {
+    if (
+      selectedDrawerGroupKey &&
+      drawerItems.some((item) => item.kind === 'group' && item.key === selectedDrawerGroupKey)
+    ) {
+      return selectedDrawerGroupKey
+    }
+
+    if (focusedSystemMessageKey) {
+      return `system:${focusedSystemMessageKey}`
+    }
+
+    if (selectedAlertId) {
+      return `alert:${selectedAlertId}`
+    }
+
+    return null
+  }, [drawerItems, focusedSystemMessageKey, selectedAlertId, selectedDrawerGroupKey])
 
   useEffect(() => {
     labelOptionsRef.current = labelOptions
@@ -1058,6 +1213,36 @@ export function ConflictMap({
     alertAudioUnlockStateRef.current = alertAudioUnlockState
     elementOrderRef.current = new Map(visibleElements.map((element, index) => [element.id, index]))
   }, [alertAudioUnlockState, alertSoundEnabled, alertVolume, alertsEnabled, assetMap, basemap, visibleElements, labelOptions, stylePrefs, eraserSize, readOnly, selectedElementId, tabLifecycleState, zoom])
+
+  const fitMapToLonLatPoints = useCallback((points: [number, number][]) => {
+    const map = mapRef.current
+    const view = map?.getView()
+    if (!map || !view || points.length === 0) {
+      return
+    }
+
+    if (points.length === 1) {
+      const [lon, lat] = points[0]
+      const currentZoom = view.getZoom() ?? documentViewport.zoom
+      view.animate({
+        center: fromLonLat([lon, lat]),
+        zoom: Math.max(currentZoom, 7.5),
+        duration: 450,
+      })
+      return
+    }
+
+    const extent = boundingExtent(points.map((point) => fromLonLat(point)))
+    view.fit(extent, {
+      duration: 500,
+      maxZoom: 8.5,
+      padding: [96, 56, 56, 56],
+    })
+  }, [documentViewport.zoom])
+
+  const syncDrawerGroupSelection = useEffectEvent((nextKey: string | null) => {
+    setSelectedDrawerGroupKey((current) => (current === nextKey ? current : nextKey))
+  })
 
   const muteAlertAutoZoom = useEffectEvent(() => {
     alertAutoZoomMutedUntilRef.current = Date.now() + 15_000
@@ -1366,6 +1551,8 @@ export function ConflictMap({
     if (!alertsEnabled) {
       clearAlertStore()
       stopAlertSiren()
+      syncDrawerGroupSelection(null)
+      setFocusedSystemMessageKey(null)
       setSelectedAlertId(null)
       setAlertFeedStatus('disconnected')
       setAlertFeedTransport('none')
@@ -1376,6 +1563,7 @@ export function ConflictMap({
     clearAlertStore,
     setAlertFeedStatus,
     setAlertFeedTransport,
+    setFocusedSystemMessageKey,
     setSelectedAlertId,
     stopAlertSiren,
   ])
@@ -1509,6 +1697,7 @@ export function ConflictMap({
               null
             : null
           const hasIncidentDockFocus =
+            selectedDrawerGroupKey !== null ||
             currentState.focusedIncidentStreamKey !== null ||
             currentState.focusedSystemMessageKey !== null ||
             isGroupedIncidentAlert(selectedDockAlert)
@@ -3462,14 +3651,18 @@ export function ConflictMap({
       return
     }
 
-    const nextSharedSelectedAlertId = alertsEnabled && focusedSystemMessageKey === null
+    const nextSharedDrawerSelectionKey = alertsEnabled
+      ? selectedDrawerItemKey
+      : null
+    const nextSharedSelectedAlertId = alertsEnabled && selectedDrawerGroupKey === null && focusedSystemMessageKey === null
       ? selectedAlertId
       : null
-    const nextSharedFocusedSystemMessageKey = alertsEnabled
+    const nextSharedFocusedSystemMessageKey = alertsEnabled && selectedDrawerGroupKey === null
       ? focusedSystemMessageKey
       : null
 
     if (
+      alertSettings.sharedDrawerSelectionKey === nextSharedDrawerSelectionKey &&
       alertSettings.sharedSelectedAlertId === nextSharedSelectedAlertId &&
       alertSettings.sharedFocusedSystemMessageKey === nextSharedFocusedSystemMessageKey
     ) {
@@ -3477,15 +3670,19 @@ export function ConflictMap({
     }
 
     setSharedAlertPresentationState({
+      drawerSelectionKey: nextSharedDrawerSelectionKey,
       selectedAlertId: nextSharedSelectedAlertId,
       focusedSystemMessageKey: nextSharedFocusedSystemMessageKey,
     })
   }, [
     access,
+    alertSettings.sharedDrawerSelectionKey,
     alertSettings.sharedFocusedSystemMessageKey,
     alertSettings.sharedSelectedAlertId,
     alertsEnabled,
     focusedSystemMessageKey,
+    selectedDrawerGroupKey,
+    selectedDrawerItemKey,
     selectedAlertId,
     setSharedAlertPresentationState,
   ])
@@ -3495,24 +3692,65 @@ export function ConflictMap({
       return
     }
 
-    const sharedSelectedAlertId = alertsEnabled ? alertSettings.sharedSelectedAlertId : null
-    const sharedFocusedSystemMessageKey = alertsEnabled
-      ? alertSettings.sharedFocusedSystemMessageKey
+    const sharedDrawerSelectionKey = alertsEnabled
+      ? alertSettings.sharedDrawerSelectionKey ??
+        (alertSettings.sharedSelectedAlertId
+          ? `alert:${alertSettings.sharedSelectedAlertId}`
+          : alertSettings.sharedFocusedSystemMessageKey
+            ? `system:${alertSettings.sharedFocusedSystemMessageKey}`
+            : null)
       : null
 
-    if (selectedAlertId !== sharedSelectedAlertId) {
-      setSelectedAlertId(sharedSelectedAlertId)
+    if (sharedDrawerSelectionKey?.startsWith('group:')) {
+      syncDrawerGroupSelection(sharedDrawerSelectionKey)
+      if (selectedAlertId !== null) {
+        setSelectedAlertId(null)
+      }
+      if (focusedSystemMessageKey !== null) {
+        setFocusedSystemMessageKey(null)
+      }
+      return
     }
 
-    if (focusedSystemMessageKey !== sharedFocusedSystemMessageKey) {
-      setFocusedSystemMessageKey(sharedFocusedSystemMessageKey)
+    if (sharedDrawerSelectionKey?.startsWith('alert:')) {
+      const sharedSelectedAlertId = sharedDrawerSelectionKey.slice('alert:'.length)
+      syncDrawerGroupSelection(null)
+      if (selectedAlertId !== sharedSelectedAlertId) {
+        setSelectedAlertId(sharedSelectedAlertId)
+      }
+      if (focusedSystemMessageKey !== null) {
+        setFocusedSystemMessageKey(null)
+      }
+      return
+    }
+
+    if (sharedDrawerSelectionKey?.startsWith('system:')) {
+      const sharedFocusedSystemMessageKey = sharedDrawerSelectionKey.slice('system:'.length)
+      syncDrawerGroupSelection(null)
+      if (selectedAlertId !== null) {
+        setSelectedAlertId(null)
+      }
+      if (focusedSystemMessageKey !== sharedFocusedSystemMessageKey) {
+        setFocusedSystemMessageKey(sharedFocusedSystemMessageKey)
+      }
+      return
+    }
+
+    syncDrawerGroupSelection(null)
+    if (selectedAlertId !== null) {
+      setSelectedAlertId(null)
+    }
+    if (focusedSystemMessageKey !== null) {
+      setFocusedSystemMessageKey(null)
     }
   }, [
     access,
+    alertSettings.sharedDrawerSelectionKey,
     alertSettings.sharedFocusedSystemMessageKey,
     alertSettings.sharedSelectedAlertId,
     alertsEnabled,
     focusedSystemMessageKey,
+    selectedDrawerGroupKey,
     selectedAlertId,
     setFocusedSystemMessageKey,
     setSelectedAlertId,
@@ -3524,15 +3762,38 @@ export function ConflictMap({
       return
     }
 
-    bindings.setFocusedAlert(alertsEnabled ? selectedAlert : null)
-  }, [alertsEnabled, selectedAlert])
+    if (!alertsEnabled) {
+      bindings.setFocusedAlerts(null)
+      return
+    }
 
-  // Early warning / incident_ended tÄ±klanÄ±nca ÅŸehirlerini haritada gÃ¶ster
+    if (selectedGroupedDrawerItem?.family === 'rocket' || selectedGroupedDrawerItem?.family === 'drone') {
+      bindings.setFocusedAlerts(selectedGroupAlertMembers)
+      return
+    }
+
+    bindings.setFocusedAlerts(selectedAlert ? [selectedAlert] : null)
+  }, [alertsEnabled, selectedAlert, selectedGroupAlertMembers, selectedGroupedDrawerItem])
+
   useEffect(() => {
     const bindings = alertBindingsRef.current
     if (!bindings) return
 
-    if (!alertsEnabled || !focusedSystemMessageKey) {
+    if (!alertsEnabled) {
+      bindings.setWarningCities(null)
+      return
+    }
+
+    if (
+      selectedGroupedDrawerItem?.family === 'early_warning' ||
+      selectedGroupedDrawerItem?.family === 'incident_ended'
+    ) {
+      const pinColor = selectedGroupedDrawerItem.family === 'incident_ended' ? '#16a34a' : '#f59e0b'
+      bindings.setWarningCities(selectedGroupWarningCities, pinColor)
+      return
+    }
+
+    if (!focusedSystemMessageKey) {
       bindings.setWarningCities(null)
       return
     }
@@ -3543,25 +3804,11 @@ export function ConflictMap({
       return
     }
 
-    const cities = msg.citiesEnriched
-      .filter((c) => c.lat != null && c.lng != null)
-      .map((c) => ({ name: c.en || c.he, lat: c.lat!, lon: c.lng!, zone: c.zone_en || '', countdown: c.countdown ?? 0 }))
+    const cities = collectWarningCities([msg])
 
     const pinColor = msg.type === 'incident_ended' ? '#16a34a' : '#f59e0b'
     bindings.setWarningCities(cities, pinColor)
-
-    // HaritayÄ± bu ÅŸehirlere zoom yap
-    const map = mapRef.current
-    const view = map?.getView()
-    if (map && view && cities.length > 0) {
-      if (cities.length === 1) {
-        view.animate({ center: fromLonLat([cities[0].lon, cities[0].lat]), zoom: Math.max(view.getZoom() ?? 7, 7.5), duration: 450 })
-      } else {
-        const ext = boundingExtent(cities.map((c) => fromLonLat([c.lon, c.lat])))
-        view.fit(ext, { duration: 500, maxZoom: 8.5, padding: [96, 56, 56, 56] })
-      }
-    }
-  }, [alertsEnabled, focusedSystemMessageKey, systemMessages])
+  }, [alertsEnabled, focusedSystemMessageKey, selectedGroupWarningCities, selectedGroupedDrawerItem, systemMessages])
 
   // City chip click â†’ zoom to coordinate
   const focusCoordinate = useAlertStore((state) => state.focusCoordinate)
@@ -3577,10 +3824,64 @@ export function ConflictMap({
   }, [focusCoordinate, focusTrigger])
 
   useEffect(() => {
-    const map = mapRef.current
-    const view = map?.getView()
-    if (!map || !view || !selectedAlert) {
-      focusedAlertIdRef.current = selectedAlert ? focusedAlertIdRef.current : null
+    if (
+      !focusedSystemMessageKey ||
+      !alertsEnabled ||
+      selectedGroupedDrawerItem !== null
+    ) {
+      focusedWarningSelectionKeyRef.current = null
+      return
+    }
+
+    if (focusedWarningSelectionKeyRef.current === focusedSystemMessageKey) {
+      return
+    }
+
+    const message = systemMessages.find((candidate) => getSystemMessageStreamKey(candidate) === focusedSystemMessageKey)
+    if (!message) {
+      focusedWarningSelectionKeyRef.current = null
+      return
+    }
+
+    const points = collectWarningCities([message]).map((city) => [city.lon, city.lat] as [number, number])
+    if (points.length === 0) {
+      focusedWarningSelectionKeyRef.current = null
+      return
+    }
+
+    focusedWarningSelectionKeyRef.current = focusedSystemMessageKey
+    fitMapToLonLatPoints(points)
+  }, [alertsEnabled, fitMapToLonLatPoints, focusedSystemMessageKey, selectedGroupedDrawerItem, systemMessages])
+
+  useEffect(() => {
+    if (!selectedGroupedDrawerItem) {
+      focusedDrawerGroupKeyRef.current = null
+      return
+    }
+
+    if (focusedDrawerGroupKeyRef.current === selectedGroupedDrawerItem.key) {
+      return
+    }
+
+    let points: [number, number][] = []
+    if (selectedGroupedDrawerItem.family === 'rocket' || selectedGroupedDrawerItem.family === 'drone') {
+      points = collectAlertFocusPoints(selectedGroupAlertMembers)
+    } else {
+      points = selectedGroupWarningCities.map((city) => [city.lon, city.lat] as [number, number])
+    }
+
+    if (points.length === 0) {
+      focusedDrawerGroupKeyRef.current = null
+      return
+    }
+
+    focusedDrawerGroupKeyRef.current = selectedGroupedDrawerItem.key
+    fitMapToLonLatPoints(points)
+  }, [fitMapToLonLatPoints, selectedGroupAlertMembers, selectedGroupWarningCities, selectedGroupedDrawerItem])
+
+  useEffect(() => {
+    if (!selectedAlert || selectedGroupedDrawerItem) {
+      focusedAlertIdRef.current = null
       return
     }
 
@@ -3595,32 +3896,8 @@ export function ConflictMap({
     }
 
     focusedAlertIdRef.current = selectedAlert.id
-    const groupedCities =
-      selectedAlert.citiesDetail?.filter((city) => hasUsableAlertCoordinate(city.lat, city.lon)) ?? []
-
-    if (groupedCities.length > 1) {
-      const extent = boundingExtent(
-        groupedCities.map((city) => fromLonLat([city.lon, city.lat])),
-      )
-      view.fit(extent, {
-        duration: 500,
-        maxZoom: 8.5,
-        padding: [96, 56, 56, 56],
-      })
-      return
-    }
-
-    if (!hasUsableAlertCoordinate(selectedAlert.lat, selectedAlert.lon)) {
-      return
-    }
-
-    const currentZoom = view.getZoom() ?? documentViewport.zoom
-    view.animate({
-      center: fromLonLat([selectedAlert.lon, selectedAlert.lat]),
-      zoom: Math.max(currentZoom, 7.5),
-      duration: 450,
-    })
-  }, [documentViewport.zoom, selectedAlert])
+    fitMapToLonLatPoints(collectAlertFocusPoints([selectedAlert]))
+  }, [fitMapToLonLatPoints, selectedAlert, selectedGroupedDrawerItem])
 
   useEffect(() => {
     if (!selectedAlert || !isGroupedIncidentAlert(selectedAlert)) {
@@ -4005,8 +4282,9 @@ export function ConflictMap({
         (readOnly || access !== 'editor' || selectedTool === 'select')
       ) {
         setInlineTextInput(null)
+        setSelectedDrawerGroupKey(null)
         setSelectedAlertId(clickedAlertId)
-      setFocusedSystemMessageKey(null)
+        setFocusedSystemMessageKey(null)
         if (!readOnly && access === 'editor') {
           useScenarioStore.getState().setSelectedElementId(null)
         }
@@ -4014,8 +4292,9 @@ export function ConflictMap({
       }
 
       if (readOnly || access !== 'editor') {
+        setSelectedDrawerGroupKey(null)
         setSelectedAlertId(null)
-      setFocusedSystemMessageKey(null)
+        setFocusedSystemMessageKey(null)
         return
       }
 
@@ -4032,16 +4311,18 @@ export function ConflictMap({
       if (clickedScenarioFeature) {
         if (selectedTool === 'select') {
           setInlineTextInput(null)
+          setSelectedDrawerGroupKey(null)
           setSelectedAlertId(null)
-      setFocusedSystemMessageKey(null)
+          setFocusedSystemMessageKey(null)
         }
         return
       }
 
       if (selectedTool === 'select') {
         setInlineTextInput(null)
+        setSelectedDrawerGroupKey(null)
         setSelectedAlertId(null)
-      setFocusedSystemMessageKey(null)
+        setFocusedSystemMessageKey(null)
         useScenarioStore.getState().setSelectedElementId(null)
         return
       }
@@ -4093,7 +4374,7 @@ export function ConflictMap({
     return () => {
       map.un('singleclick', handler)
     }
-  }, [access, activeAssetId, addAssetElement, addTextElement, alertsEnabled, selectedTool, readOnly, setFocusedSystemMessageKey, setMissileTarget, setSelectedAlertId, setTool, tabLifecycleState])
+  }, [access, activeAssetId, addAssetElement, addTextElement, alertsEnabled, selectedTool, readOnly, setFocusedSystemMessageKey, setMissileTarget, setSelectedAlertId, setSelectedDrawerGroupKey, setTool, tabLifecycleState])
 
   // Eraser: drag-to-erase interaction
   useEffect(() => {
@@ -4369,48 +4650,6 @@ export function ConflictMap({
     [missileRuntimeFlights],
   )
   const setFocusCoordinate = useAlertStore((state) => state.setFocusCoordinate)
-  const drawerItems = useMemo<DrawerCardViewModel[]>(() => {
-    const activeAlertIds = new Set(alerts.map((alert) => alert.id))
-    const nextItems: DrawerCardItem[] = [
-      ...historyAlerts.map((alert) => ({
-        key: `alert:${alert.id}`,
-        kind: 'alert' as const,
-        timestampMs: alert.occurredAtMs,
-        isLive: activeAlertIds.has(alert.id),
-        alert,
-      })),
-      ...systemMessages
-        .filter((message) => isIncidentStreamSystemMessage(message))
-        .map((message) => ({
-          key: `system:${getSystemMessageStreamKey(message)}`,
-          kind: 'system' as const,
-          timestampMs: message.receivedAtMs,
-          isLive: false,
-          message,
-        })),
-    ]
-
-    nextItems.sort((left, right) => {
-      if (right.timestampMs !== left.timestampMs) {
-        return right.timestampMs - left.timestampMs
-      }
-
-      return right.key.localeCompare(left.key, 'en')
-    })
-
-    return buildDrawerCardViewModels(nextItems.slice(0, 1000))
-  }, [alerts, historyAlerts, systemMessages])
-  const selectedDrawerItemKey = useMemo(() => {
-    if (focusedSystemMessageKey) {
-      return `system:${focusedSystemMessageKey}`
-    }
-
-    if (selectedAlertId) {
-      return `alert:${selectedAlertId}`
-    }
-
-    return null
-  }, [focusedSystemMessageKey, selectedAlertId])
 
   const handleSelectDrawerItem = useCallback((key: string) => {
     const item = drawerItems.find((candidate) => candidate.key === key)
@@ -4418,6 +4657,14 @@ export function ConflictMap({
       return
     }
 
+    if (item.kind === 'group') {
+      setSelectedDrawerGroupKey(item.key)
+      setSelectedAlertId(null)
+      setFocusedSystemMessageKey(null)
+      return
+    }
+
+    setSelectedDrawerGroupKey(null)
     if (item.kind === 'alert') {
       setFocusedSystemMessageKey(null)
       setSelectedAlertId(item.alertId)
@@ -4426,7 +4673,7 @@ export function ConflictMap({
 
     setSelectedAlertId(null)
     setFocusedSystemMessageKey(item.systemMessageKey)
-  }, [drawerItems, setFocusedSystemMessageKey, setSelectedAlertId])
+  }, [drawerItems, setFocusedSystemMessageKey, setSelectedAlertId, setSelectedDrawerGroupKey])
 
   return (
     <div

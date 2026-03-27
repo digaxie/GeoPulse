@@ -5,6 +5,7 @@ import type {
   DrawerCardViewModel,
   DrawerCity,
   DrawerCityGroup,
+  DrawerGroupMemberViewModel,
 } from '@/features/alerts/alertDrawerModel'
 import { normalizeDrawerSearchText } from '@/features/alerts/alertDrawerModel'
 
@@ -72,6 +73,35 @@ function getInitialRelativeNow() {
 function getNextMinuteDelay(now: number) {
   const remainder = now % MINUTE_MS
   return remainder === 0 ? MINUTE_MS : MINUTE_MS - remainder
+}
+
+function formatAbsoluteTime(timestampMs: number) {
+  const parts = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(timestampMs)
+
+  const values = Object.fromEntries(
+    parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as Partial<Record<'hour' | 'minute', string>>
+
+  return `${values.hour ?? '00'}:${values.minute ?? '00'}`
+}
+
+function formatGroupDualTime(
+  timeRangeStartMs: number,
+  timeRangeEndMs: number,
+  relativeNow: number,
+) {
+  const baseText = formatTimelineDualTime(timeRangeEndMs, relativeNow)
+  const [relativeText, absoluteText = ''] = baseText.split(' | ')
+  const startText = formatAbsoluteTime(timeRangeStartMs)
+  const endText = formatAbsoluteTime(timeRangeEndMs)
+  const rangeText = startText === endText ? startText : `${startText} - ${endText}`
+
+  return `${relativeText} | ${absoluteText.replace(/\([^)]*\)/, `(${rangeText})`)}`
 }
 
 function useRelativeNow() {
@@ -196,6 +226,38 @@ function DrawerExpandedGroups({
   )
 }
 
+function DrawerGroupMembers({
+  members,
+  onFocusCity,
+}: {
+  members: DrawerGroupMemberViewModel[]
+  onFocusCity: (coord: { lat: number; lon: number; name: string }) => void
+}) {
+  if (members.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="alert-drawer-item-expanded">
+      {members.map((member) => (
+        <section className="alert-drawer-card-grouped-member" key={member.key}>
+          <div className="alert-drawer-card-grouped-member-meta">
+            <strong>{member.title}</strong>
+            <span>{formatAbsoluteTime(member.timestampMs)}</span>
+          </div>
+          <p className="alert-drawer-card-grouped-member-body">{member.body}</p>
+          <DrawerExpandedGroups
+            color={member.color}
+            groups={member.groups}
+            itemKey={member.key}
+            onFocusCity={onFocusCity}
+          />
+        </section>
+      ))}
+    </div>
+  )
+}
+
 const AlertDrawerHeaderClock = memo(function AlertDrawerHeaderClock() {
   const [clockNow, setClockNow] = useState(() => Date.now())
 
@@ -230,11 +292,15 @@ const AlertDrawerCard = memo(function AlertDrawerCard({
   relativeNow: number
   selected: boolean
 }) {
-  const hiddenCount = item.groups.reduce((total, group) => total + group.cities.length, 0) - item.previewCities.length
-  const relativeTime = useMemo(
-    () => formatTimelineDualTime(item.timestampMs, relativeNow),
-    [item.timestampMs, relativeNow],
-  )
+  const relativeTime = useMemo(() => {
+    if (item.kind === 'group') {
+      return formatGroupDualTime(item.timeRangeStartMs, item.timeRangeEndMs, relativeNow)
+    }
+
+    return formatTimelineDualTime(item.timestampMs, relativeNow)
+  }, [item, relativeNow])
+  const totalCityCount = item.totalCityCount
+  const previewHiddenCount = Math.max(0, totalCityCount - item.previewCities.length)
 
   return (
     <div className="alerts-card-wrapper alert-drawer-item">
@@ -263,21 +329,25 @@ const AlertDrawerCard = memo(function AlertDrawerCard({
             itemKey={item.key}
             onFocusCity={onFocusCity}
           />
-          {hiddenCount > 0 ? (
+          {previewHiddenCount > 0 ? (
             <div className="alert-drawer-preview-meta">
-              <span className="alerts-city-chip alerts-city-chip-more">+{hiddenCount} daha</span>
+              <span className="alerts-city-chip alerts-city-chip-more">+{previewHiddenCount} daha</span>
             </div>
           ) : null}
         </>
       ) : null}
 
       {selected ? (
-        <DrawerExpandedGroups
-          color={item.color}
-          groups={item.groups}
-          itemKey={item.key}
-          onFocusCity={onFocusCity}
-        />
+        item.kind === 'group' ? (
+          <DrawerGroupMembers members={item.members} onFocusCity={onFocusCity} />
+        ) : (
+          <DrawerExpandedGroups
+            color={item.color}
+            groups={item.groups}
+            itemKey={item.key}
+            onFocusCity={onFocusCity}
+          />
+        )
       ) : null}
     </div>
   )
