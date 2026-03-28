@@ -224,6 +224,11 @@ const ALERT_AUDIO_FALLBACK_DURATION_MS_BY_ASSET: Record<string, number> = {
   [EARLY_WARNING_AUDIO_ASSET_PATH]: 11_000,
 }
 
+const FIXED_ALERT_PLAYBACK_DURATION_MS_BY_FAMILY: Partial<Record<AlertEventSoundFamily, number>> = {
+  rocket: 15_000,
+  drone: 15_000,
+}
+
 const landPalettes: Record<LandPalette, string[]> = {
   broadcast: [
     '#d9b286',
@@ -1554,6 +1559,7 @@ export function ConflictMap({
         return
       }
 
+      audio.loop = false
       audio.pause()
       audio.currentTime = 0
     },
@@ -1594,8 +1600,21 @@ export function ConflictMap({
     return ALERT_AUDIO_FALLBACK_DURATION_MS_BY_ASSET[assetPath] ?? 1000
   }, [])
 
+  const getFixedAlertPlaybackDurationMs = useCallback((family: AlertEventSoundFamily) => {
+    return FIXED_ALERT_PLAYBACK_DURATION_MS_BY_FAMILY[family] ?? null
+  }, [])
+
+  const shouldLoopAlertAudio = useCallback((family: AlertEventSoundFamily) => {
+    return getFixedAlertPlaybackDurationMs(family) !== null
+  }, [getFixedAlertPlaybackDurationMs])
+
   const getEffectivePlaybackDurationMs = useCallback(
     (assetPath: string, family: AlertEventSoundFamily) => {
+      const fixedDurationMs = getFixedAlertPlaybackDurationMs(family)
+      if (fixedDurationMs !== null) {
+        return fixedDurationMs
+      }
+
       const actualDurationMs = getKnownAlertAudioDurationMs(assetPath)
       if (family !== 'earlyWarning' || getConfiguredEventSound(family).mode === 'long') {
         return actualDurationMs
@@ -1603,7 +1622,7 @@ export function ConflictMap({
 
       return Math.max(1000, Math.round(actualDurationMs / 2))
     },
-    [getConfiguredEventSound, getKnownAlertAudioDurationMs],
+    [getConfiguredEventSound, getFixedAlertPlaybackDurationMs, getKnownAlertAudioDurationMs],
   )
 
   const playEventSound = useCallback(
@@ -1640,6 +1659,7 @@ export function ConflictMap({
       clearAlertAudioStopTimer(assetPath)
       audio.pause()
       audio.currentTime = 0
+      audio.loop = shouldLoopAlertAudio(family)
       audio.volume = alertVolumeRef.current
       alertAssetPlayPendingRef.current.set(assetPath, true)
 
@@ -1649,6 +1669,15 @@ export function ConflictMap({
           alertAssetPlayPendingRef.current.set(assetPath, false)
           alertLastAssetStartedAtRef.current.set(assetPath, Date.now())
           setAudioUnlockState('unlocked')
+
+          if (shouldLoopAlertAudio(family)) {
+            const playbackDurationMs = getEffectivePlaybackDurationMs(assetPath, family)
+            const timerId = window.setTimeout(() => {
+              stopAlertAudioAsset(assetPath)
+            }, playbackDurationMs)
+            alertAudioStopTimerIdsRef.current.set(assetPath, timerId)
+            return
+          }
 
           if (family === 'earlyWarning' && getConfiguredEventSound(family).mode === 'short') {
             const playbackDurationMs = getEffectivePlaybackDurationMs(assetPath, family)
@@ -1691,6 +1720,7 @@ export function ConflictMap({
       isEventSoundPlayable,
       markAlertAudioLoadFailure,
       setAudioUnlockState,
+      shouldLoopAlertAudio,
       stopAlertAudioAsset,
     ],
   )
@@ -1735,6 +1765,7 @@ export function ConflictMap({
 
         audio.volume = 0
         audio.currentTime = 0
+        audio.loop = false
 
         try {
           await audio.play()
