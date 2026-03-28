@@ -3977,9 +3977,21 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   align-items: center;
 }
 
+.alerts-event-sound-toggle {
+  justify-content: flex-start;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.alerts-event-sound-toggle span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .alerts-event-sound-duration {
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 0.45rem;
   color: var(--ink-500);
   font-size: 0.76rem;

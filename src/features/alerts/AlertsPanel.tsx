@@ -173,7 +173,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
               const eventSound = alertSettings.eventSounds[row.family]
               return (
                 <div className="alerts-event-sound-row" key={row.family}>
-                  <label className="alerts-audio-toggle">
+                  <label className="alerts-audio-toggle alerts-event-sound-toggle">
                     <input
                       checked={eventSound.enabled}
                       disabled={!canToggle || !enabled}
