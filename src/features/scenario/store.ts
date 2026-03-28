@@ -1161,22 +1161,22 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
 
   setUiTheme(theme) {
     set((current) => {
-      const nextBackgroundPreset =
-        theme === 'dark'
-          ? 'midnight'
-          : current.document.stylePrefs.backgroundPreset === 'midnight'
-            ? 'broadcast_blue'
-            : current.document.stylePrefs.backgroundPreset
+      const nextBasemapPreset =
+        theme === 'dark' ? 'openfreemap_dark' : 'openfreemap_liberty'
 
       return {
         ...applyMutation(
           current,
           {
             ...current.document,
+            basemap: {
+              ...current.document.basemap,
+              preset: nextBasemapPreset,
+            },
             stylePrefs: {
               ...current.document.stylePrefs,
               uiTheme: theme,
-              backgroundPreset: nextBackgroundPreset,
+              backgroundPreset: 'broadcast_blue',
             },
           },
           { trackHistory: false },

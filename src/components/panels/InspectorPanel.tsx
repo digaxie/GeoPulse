@@ -103,20 +103,6 @@ export function InspectorPanel({
           </select>
         </label>
 
-        <label className="switch-row">
-          <span>Haritayi dark goster</span>
-          <input
-            checked={stylePrefs.backgroundPreset === 'midnight'}
-            onChange={(event) =>
-              onSetStylePref(
-                'backgroundPreset',
-                event.target.checked ? 'midnight' : 'broadcast_blue',
-              )
-            }
-            type="checkbox"
-          />
-        </label>
-
         {isOpenFreeMapBasemap ? (
           <label className="switch-row">
             <span>Performans modu</span>

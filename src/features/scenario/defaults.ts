@@ -10,7 +10,7 @@ export function createDefaultScenarioDocument(): ScenarioDocument {
       rotation: 0,
     },
     basemap: {
-      preset: 'openfreemap_liberty',
+      preset: 'openfreemap_dark',
       projection: 'web_mercator',
     },
     labelOptions: {
@@ -26,7 +26,7 @@ export function createDefaultScenarioDocument(): ScenarioDocument {
     },
     stylePrefs: {
       uiTheme: 'dark',
-      backgroundPreset: 'midnight',
+      backgroundPreset: 'broadcast_blue',
       oceanColor: '#a9d6ff',
       landPalette: 'broadcast',
       performanceMode: false,

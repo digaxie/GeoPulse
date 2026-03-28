@@ -336,18 +336,20 @@ describe('useScenarioStore', () => {
     })
   })
 
-  it('toggles uiTheme and keeps the map preset in sync with the header behavior', () => {
+  it('toggles uiTheme and switches the basemap between OpenFreeMap dark and liberty', () => {
     const store = useScenarioStore.getState()
 
     store.setStylePref('backgroundPreset', 'paper_light')
     store.setUiTheme('dark')
 
     expect(useScenarioStore.getState().document.stylePrefs.uiTheme).toBe('dark')
-    expect(useScenarioStore.getState().document.stylePrefs.backgroundPreset).toBe('midnight')
+    expect(useScenarioStore.getState().document.basemap.preset).toBe('openfreemap_dark')
+    expect(useScenarioStore.getState().document.stylePrefs.backgroundPreset).toBe('broadcast_blue')
 
     store.setUiTheme('light')
 
     expect(useScenarioStore.getState().document.stylePrefs.uiTheme).toBe('light')
+    expect(useScenarioStore.getState().document.basemap.preset).toBe('openfreemap_liberty')
     expect(useScenarioStore.getState().document.stylePrefs.backgroundPreset).toBe('broadcast_blue')
   })
 
