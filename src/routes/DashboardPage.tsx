@@ -7,9 +7,22 @@ import { useAuth } from '@/features/auth/useAuth'
 import { migrateScenarioDocument } from '@/features/scenario/migrate'
 import { parseScenarioTransfer } from '@/features/scenario/transfer'
 import { backendClient } from '@/lib/backend'
-import type { ScenarioListItem } from '@/lib/backend/types'
+import type { ScenarioListItem, ScenarioLock } from '@/lib/backend/types'
 import { withBasePath } from '@/lib/paths'
 import { formatRelativeDate, readTextFile } from '@/lib/utils'
+
+function getActiveScenarioLock(lock: ScenarioLock | null, nowMs: number) {
+  if (!lock) {
+    return null
+  }
+
+  const expiresAtMs = Date.parse(lock.expiresAt)
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+    return null
+  }
+
+  return lock
+}
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -20,7 +33,18 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const importInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 10_000)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [])
 
   useEffect(() => {
     if (!session) {
@@ -81,9 +105,7 @@ export function DashboardPage() {
       navigate(`/scenario/${scenario.id}`)
     } catch (loadError) {
       setImportError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Senaryo JSON dosyası içe aktarılamadı.',
+        loadError instanceof Error ? loadError.message : 'Senaryo JSON dosyası içe aktarılamadı.',
       )
     } finally {
       event.target.value = ''
@@ -92,8 +114,9 @@ export function DashboardPage() {
   }
 
   async function handleDeleteScenario(scenario: ScenarioListItem) {
-    const lockNote = scenario.lock
-      ? ` Bu senaryoda editör kilidi ${scenario.lock.holderUsername} üzerinde görünüyor.`
+    const activeLock = getActiveScenarioLock(scenario.lock, nowMs)
+    const lockNote = activeLock
+      ? ` Bu senaryoda editör kilidi ${activeLock.holderUsername} üzerinde görünüyor.`
       : ''
     const confirmed = window.confirm(
       `"${scenario.title}" senaryosunu silmek istiyor musunuz? Bu işlem geri alınmaz.${lockNote}`,
@@ -171,6 +194,7 @@ export function DashboardPage() {
       <section className="scenario-grid">
         {loadingScenarios ? <p className="panel-empty">Senaryolar yükleniyor...</p> : null}
         {scenarios.map((scenario) => {
+          const activeLock = getActiveScenarioLock(scenario.lock, nowMs)
           const viewerPath = withBasePath(`/view/${scenario.viewerSlug}`)
 
           return (
@@ -188,8 +212,8 @@ export function DashboardPage() {
                 <Link className="inline-link" to={`/view/${scenario.viewerSlug}`}>
                   {viewerPath}
                 </Link>
-                {scenario.lock ? (
-                  <p className="scenario-lock">{scenario.lock.holderUsername} editör olarak bağlı.</p>
+                {activeLock ? (
+                  <p className="scenario-lock">{activeLock.holderUsername} editör olarak bağlı.</p>
                 ) : (
                   <p className="scenario-lock scenario-lock-free">Editör kilidi boş.</p>
                 )}

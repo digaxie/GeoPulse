@@ -154,6 +154,7 @@ const TOUCH_VERTEX_TOLERANCE_PX = 18
 const HUD_ROTATION_STEP = Math.PI / 12
 const TAB_RESTORE_DEADLOCK_MS = 3000
 const OPENFREEMAP_LAYER_GROUP_CLASSNAME = 'live-basemap-layer live-basemap-layer--openfreemap'
+const OPENFREEMAP_SAFE_MAX_ZOOM = 14.8
 
 type MovableHudElementKind = 'asset' | 'text' | 'polyline' | 'freehand' | 'polygon' | 'callout'
 
@@ -381,6 +382,10 @@ function usesOpenFreeMapBasemap(preset: BasemapPreset) {
   return isOpenFreeMapPreset(preset)
 }
 
+function getBasemapMaxZoom(preset: BasemapPreset) {
+  return usesOpenFreeMapBasemap(preset) ? OPENFREEMAP_SAFE_MAX_ZOOM : 19
+}
+
 
 function usesHgmBasemap(preset: BasemapPreset) {
   return (
@@ -515,7 +520,13 @@ function dedupeWarningPointCities(cities: WarningCityPoint[]) {
   const nextCities: WarningCityPoint[] = []
 
   for (const city of cities) {
-    const key = [city.name, city.lat, city.lon, city.family].join('|')
+    const normalizedName = normalizeComparableLabel(city.name)
+    const normalizedZone = normalizeComparableLabel(city.zone)
+    const key =
+      normalizedName.length > 0
+        ? [city.family, normalizedName, normalizedZone].join('|')
+        : [city.family, city.lat.toFixed(4), city.lon.toFixed(4)].join('|')
+
     if (seen.has(key)) {
       continue
     }
@@ -2684,7 +2695,7 @@ export function ConflictMap({
     if (sceneViewport) {
       view.animate({
         center: fromLonLat(sceneViewport.center),
-        zoom: sceneViewport.zoom,
+        zoom: Math.min(sceneViewport.zoom, getBasemapMaxZoom(basemapRef.current.preset)),
         rotation: 0,
         duration: 220,
       })
@@ -2782,6 +2793,16 @@ export function ConflictMap({
   }, [assetMap])
 
   useEffect(() => {
+    const view = mapRef.current?.getView()
+    if (view) {
+      const maxZoom = getBasemapMaxZoom(basemap.preset)
+      view.setMaxZoom(maxZoom)
+      const currentZoom = view.getZoom()
+      if (typeof currentZoom === 'number' && currentZoom > maxZoom) {
+        view.setZoom(maxZoom)
+      }
+    }
+
     const deFactoPreset = usesDeFactoLayers(basemap.preset)
     const hgmPreset = appEnv.useHgmAtlas && usesHgmBasemap(basemap.preset)
     const openFreeMapPreset = usesOpenFreeMapBasemap(basemap.preset)
@@ -3357,8 +3378,9 @@ export function ConflictMap({
       target: targetElement,
       view: new View({
         center: fromLonLat(initialViewportRef.current.center),
-        zoom: initialViewportRef.current.zoom,
+        zoom: Math.min(initialViewportRef.current.zoom, getBasemapMaxZoom(basemapRef.current.preset)),
         rotation: initialViewportRef.current.rotation,
+        maxZoom: getBasemapMaxZoom(basemapRef.current.preset),
       }),
       layers: [
         openFreeMapGroup,

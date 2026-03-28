@@ -317,6 +317,9 @@ export function createAlertLayer(map: OlMap) {
       warningFeatures = []
 
       if (!cities || cities.length === 0) {
+        source.changed()
+        layer.changed()
+        map.render()
         return
       }
 
@@ -330,6 +333,10 @@ export function createAlertLayer(map: OlMap) {
         source.addFeature(feature)
         warningFeatures.push(feature)
       }
+
+      source.changed()
+      layer.changed()
+      map.render()
     },
 
     clearAll() {
