@@ -35,12 +35,9 @@ const BANNER_DISMISS_OPTIONS = [
   { value: 120, label: '2 dk' },
 ] as const
 
-const EVENT_SOUND_DURATION_OPTIONS = [
-  { value: 'full', label: 'Tamamı' },
-  ...Array.from({ length: 30 }, (_, index) => ({
-    value: String(index + 1),
-    label: `${index + 1} sn`,
-  })),
+const EVENT_SOUND_MODE_OPTIONS = [
+  { value: 'short', label: 'Kısa' },
+  { value: 'long', label: 'Uzun' },
 ] as const
 
 const EVENT_SOUND_ROWS: ReadonlyArray<{
@@ -50,7 +47,6 @@ const EVENT_SOUND_ROWS: ReadonlyArray<{
   { family: 'rocket', label: 'Roket' },
   { family: 'drone', label: 'İHA' },
   { family: 'earlyWarning', label: 'Erken uyarı' },
-  { family: 'incidentEnded', label: 'Olay sonu' },
 ]
 
 type AlertsPanelProps = {
@@ -74,9 +70,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const setPresentationAlertSoundEnabled = useScenarioStore((state) => state.setPresentationAlertSoundEnabled)
   const setPresentationAlertVolume = useScenarioStore((state) => state.setPresentationAlertVolume)
   const setAlertEventSoundEnabled = useScenarioStore((state) => state.setAlertEventSoundEnabled)
-  const setAlertEventSoundMaxPlaySeconds = useScenarioStore(
-    (state) => state.setAlertEventSoundMaxPlaySeconds,
-  )
+  const setAlertEventSoundMode = useScenarioStore((state) => state.setAlertEventSoundMode)
   const setBannerAutoDismissSec = useScenarioStore((state) => state.setBannerAutoDismissSec)
 
   const enabled = alertSettings.enabled
@@ -184,19 +178,19 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
                     <span>{row.label}</span>
                   </label>
                   <label className="alerts-event-sound-duration">
-                    <span>Süre</span>
+                    <span>Çalma</span>
                     <select
                       className="panel-input panel-select"
                       disabled={!canToggle || !enabled || !eventSound.enabled}
                       onChange={(event) =>
-                        setAlertEventSoundMaxPlaySeconds(
+                        setAlertEventSoundMode(
                           row.family,
-                          event.target.value === 'full' ? null : Number(event.target.value),
+                          event.target.value as typeof eventSound.mode,
                         )
                       }
-                      value={eventSound.maxPlaySeconds === null ? 'full' : String(eventSound.maxPlaySeconds)}
+                      value={eventSound.mode}
                     >
-                      {EVENT_SOUND_DURATION_OPTIONS.map((option) => (
+                      {EVENT_SOUND_MODE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -207,6 +201,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
               )
             })}
           </div>
+          <p className="alerts-audio-note">Kısa mod, alarm dosyasının yaklaşık yarısını çalar.</p>
         </div>
 
         <p className="alerts-audio-note">Sunum sekmesinde ilk alarm sesi için bir kez dokunmak gerekir.</p>

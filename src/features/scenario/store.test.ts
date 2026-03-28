@@ -45,15 +45,15 @@ describe('useScenarioStore', () => {
     expect(useScenarioStore.getState().history.length).toBe(historyLength)
   })
 
-  it('stores capped event sound max play seconds', () => {
-    useScenarioStore.getState().setAlertEventSoundMaxPlaySeconds('rocket', 45)
-    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.maxPlaySeconds).toBe(30)
+  it('stores event sound mode without polluting history', () => {
+    const historyLength = useScenarioStore.getState().history.length
 
-    useScenarioStore.getState().setAlertEventSoundMaxPlaySeconds('rocket', 0)
-    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.maxPlaySeconds).toBe(1)
+    useScenarioStore.getState().setAlertEventSoundMode('rocket', 'short')
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.mode).toBe('short')
 
-    useScenarioStore.getState().setAlertEventSoundMaxPlaySeconds('rocket', null)
-    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.maxPlaySeconds).toBeNull()
+    useScenarioStore.getState().setAlertEventSoundMode('rocket', 'long')
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.mode).toBe('long')
+    expect(useScenarioStore.getState().history.length).toBe(historyLength)
   })
 
   it('stores reference zoom for new text elements', () => {
@@ -348,10 +348,10 @@ describe('useScenarioStore', () => {
       editorSoundEnabled: true,
       editorVolume: 0.8,
       eventSounds: {
-        drone: { enabled: true, maxPlaySeconds: null },
-        earlyWarning: { enabled: true, maxPlaySeconds: null },
-        incidentEnded: { enabled: false, maxPlaySeconds: null },
-        rocket: { enabled: true, maxPlaySeconds: null },
+        drone: { enabled: true, mode: 'long' },
+        earlyWarning: { enabled: true, mode: 'long' },
+        incidentEnded: { enabled: false, mode: 'long' },
+        rocket: { enabled: true, mode: 'long' },
       },
       presentationSoundEnabled: true,
       presentationVolume: 0.35,

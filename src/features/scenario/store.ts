@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { fromLonLat, toLonLat } from 'ol/proj'
 
-import { DEFAULT_SCENARIO_ALERT_SETTINGS, type AlertEventSoundFamily } from '@/features/alerts/types'
+import {
+  DEFAULT_SCENARIO_ALERT_SETTINGS,
+  type AlertEventSoundDurationMode,
+  type AlertEventSoundFamily,
+} from '@/features/alerts/types'
 import { backfillUploadedAssetSnapshots } from '@/features/assets/assetSnapshots'
 import { getEstimatedFlightDurationMs, getHostileInterceptSnapshot } from '@/features/missiles/flightAnimation'
 import { haversineDistance } from '@/features/missiles/geodesic'
@@ -114,10 +118,7 @@ type ScenarioStore = {
   setPresentationAlertSoundEnabled: (enabled: boolean) => void
   setPresentationAlertVolume: (volume: number) => void
   setAlertEventSoundEnabled: (family: AlertEventSoundFamily, enabled: boolean) => void
-  setAlertEventSoundMaxPlaySeconds: (
-    family: AlertEventSoundFamily,
-    seconds: number | null,
-  ) => void
+  setAlertEventSoundMode: (family: AlertEventSoundFamily, mode: AlertEventSoundDurationMode) => void
   setBannerAutoDismissSec: (seconds: number) => void
   setSharedAlertPresentationState: (input: {
     selectedAlertId: string | null
@@ -823,16 +824,12 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
     })
   },
 
-  setAlertEventSoundMaxPlaySeconds(family, seconds) {
+  setAlertEventSoundMode(family, mode) {
     set((current) => {
       const alertsState = getAlertSettings(current.document)
       const currentFamilyState = alertsState.eventSounds[family]
-      const nextSeconds =
-        seconds === null
-          ? null
-          : Math.round(clamp(seconds, 1, 30))
 
-      if (currentFamilyState.maxPlaySeconds === nextSeconds) {
+      if (currentFamilyState.mode === mode) {
         return current
       }
 
@@ -847,7 +844,7 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
                 ...alertsState.eventSounds,
                 [family]: {
                   ...currentFamilyState,
-                  maxPlaySeconds: nextSeconds,
+                  mode,
                 },
               },
             },

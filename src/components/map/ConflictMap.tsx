@@ -216,6 +216,10 @@ const ALERT_AUDIO_ASSET_BY_FAMILY: Record<AlertEventSoundFamily, string> = {
   earlyWarning: EARLY_WARNING_AUDIO_ASSET_PATH,
   incidentEnded: SIREN_AUDIO_ASSET_PATH,
 }
+const ALERT_AUDIO_FALLBACK_DURATION_MS_BY_ASSET: Record<string, number> = {
+  [SIREN_AUDIO_ASSET_PATH]: 15_000,
+  [EARLY_WARNING_AUDIO_ASSET_PATH]: 11_000,
+}
 
 const landPalettes: Record<LandPalette, string[]> = {
   broadcast: [
@@ -475,13 +479,9 @@ function getAlertEventSoundFamily(alert: Pick<RocketAlert, 'alertTypeId'>): Aler
 
 function getSystemMessageEventSoundFamily(
   message: Pick<TzevaadomSystemMessage, 'type'>,
-): Extract<AlertEventSoundFamily, 'earlyWarning' | 'incidentEnded'> | null {
+) : Extract<AlertEventSoundFamily, 'earlyWarning'> | null {
   if (message.type === 'early_warning') {
     return 'earlyWarning'
-  }
-
-  if (message.type === 'incident_ended') {
-    return 'incidentEnded'
   }
 
   return null
@@ -1566,6 +1566,10 @@ export function ConflictMap({
   }, [stopAlertAudioAsset])
 
   const isEventSoundPlayable = useCallback((family: AlertEventSoundFamily) => {
+    if (family === 'incidentEnded') {
+      return false
+    }
+
     if (!alertsEnabledRef.current || !alertSoundEnabledRef.current || alertVolumeRef.current <= 0) {
       return false
     }
@@ -1573,17 +1577,30 @@ export function ConflictMap({
     return getConfiguredEventSound(family).enabled
   }, [getConfiguredEventSound])
 
+  const getKnownAlertAudioDurationMs = useCallback((assetPath: string) => {
+    const cachedDurationMs = alertAudioDurationsRef.current.get(assetPath)
+    if (typeof cachedDurationMs === 'number' && Number.isFinite(cachedDurationMs) && cachedDurationMs > 0) {
+      return cachedDurationMs
+    }
+
+    const audio = alertAudioPlayersRef.current.get(assetPath)
+    if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+      return Math.round(audio.duration * 1000)
+    }
+
+    return ALERT_AUDIO_FALLBACK_DURATION_MS_BY_ASSET[assetPath] ?? 1000
+  }, [])
+
   const getEffectivePlaybackDurationMs = useCallback(
     (assetPath: string, family: AlertEventSoundFamily) => {
-      const actualDurationMs = alertAudioDurationsRef.current.get(assetPath) ?? 1000
-      const maxPlaySeconds = getConfiguredEventSound(family).maxPlaySeconds
-      if (maxPlaySeconds === null) {
+      const actualDurationMs = getKnownAlertAudioDurationMs(assetPath)
+      if (getConfiguredEventSound(family).mode === 'long') {
         return actualDurationMs
       }
 
-      return Math.min(actualDurationMs, maxPlaySeconds * 1000)
+      return Math.max(1000, Math.round(actualDurationMs / 2))
     },
-    [getConfiguredEventSound],
+    [getConfiguredEventSound, getKnownAlertAudioDurationMs],
   )
 
   const playEventSound = useCallback(
@@ -1630,11 +1647,11 @@ export function ConflictMap({
           alertLastAssetStartedAtRef.current.set(assetPath, Date.now())
           setAudioUnlockState('unlocked')
 
-          const maxPlaySeconds = getConfiguredEventSound(family).maxPlaySeconds
-          if (maxPlaySeconds !== null) {
+          if (getConfiguredEventSound(family).mode === 'short') {
+            const playbackDurationMs = getEffectivePlaybackDurationMs(assetPath, family)
             const timerId = window.setTimeout(() => {
               stopAlertAudioAsset(assetPath)
-            }, maxPlaySeconds * 1000)
+            }, playbackDurationMs)
             alertAudioStopTimerIdsRef.current.set(assetPath, timerId)
           }
         })

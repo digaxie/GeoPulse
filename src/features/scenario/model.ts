@@ -203,24 +203,28 @@ export const scenarioAlertSettingsSchema = z
         rocket: z
           .object({
             enabled: z.boolean().optional(),
+            mode: z.enum(['short', 'long']).optional(),
             maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
           })
           .optional(),
         drone: z
           .object({
             enabled: z.boolean().optional(),
+            mode: z.enum(['short', 'long']).optional(),
             maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
           })
           .optional(),
         earlyWarning: z
           .object({
             enabled: z.boolean().optional(),
+            mode: z.enum(['short', 'long']).optional(),
             maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
           })
           .optional(),
         incidentEnded: z
           .object({
             enabled: z.boolean().optional(),
+            mode: z.enum(['short', 'long']).optional(),
             maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
           })
           .optional(),
@@ -255,33 +259,37 @@ export const scenarioAlertSettingsSchema = z
           enabled:
             input.eventSounds?.rocket?.enabled ??
             DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.rocket.enabled,
-          maxPlaySeconds:
-            input.eventSounds?.rocket?.maxPlaySeconds ??
-            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.rocket.maxPlaySeconds,
+          mode:
+            input.eventSounds?.rocket?.mode ??
+            (typeof input.eventSounds?.rocket?.maxPlaySeconds === 'number' ? 'short' : undefined) ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.rocket.mode,
         },
         drone: {
           enabled:
             input.eventSounds?.drone?.enabled ??
             DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.drone.enabled,
-          maxPlaySeconds:
-            input.eventSounds?.drone?.maxPlaySeconds ??
-            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.drone.maxPlaySeconds,
+          mode:
+            input.eventSounds?.drone?.mode ??
+            (typeof input.eventSounds?.drone?.maxPlaySeconds === 'number' ? 'short' : undefined) ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.drone.mode,
         },
         earlyWarning: {
           enabled:
             input.eventSounds?.earlyWarning?.enabled ??
             DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.earlyWarning.enabled,
-          maxPlaySeconds:
-            input.eventSounds?.earlyWarning?.maxPlaySeconds ??
-            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.earlyWarning.maxPlaySeconds,
+          mode:
+            input.eventSounds?.earlyWarning?.mode ??
+            (typeof input.eventSounds?.earlyWarning?.maxPlaySeconds === 'number' ? 'short' : undefined) ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.earlyWarning.mode,
         },
         incidentEnded: {
           enabled:
             input.eventSounds?.incidentEnded?.enabled ??
             DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.incidentEnded.enabled,
-          maxPlaySeconds:
-            input.eventSounds?.incidentEnded?.maxPlaySeconds ??
-            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.incidentEnded.maxPlaySeconds,
+          mode:
+            input.eventSounds?.incidentEnded?.mode ??
+            (typeof input.eventSounds?.incidentEnded?.maxPlaySeconds === 'number' ? 'short' : undefined) ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.incidentEnded.mode,
         },
       },
     }

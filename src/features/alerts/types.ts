@@ -2,10 +2,11 @@ export type AlertFeedStatus = 'disconnected' | 'connecting' | 'live' | 'error'
 export type AlertFeedTransport = 'none' | 'stream' | 'polling'
 export type AlertAudioRole = 'editor' | 'presentation'
 export type AlertEventSoundFamily = 'rocket' | 'drone' | 'earlyWarning' | 'incidentEnded'
+export type AlertEventSoundDurationMode = 'short' | 'long'
 
 export type ScenarioAlertEventSoundSetting = {
   enabled: boolean
-  maxPlaySeconds: number | null
+  mode: AlertEventSoundDurationMode
 }
 
 export type ScenarioAlertEventSoundSettings = Record<
@@ -41,10 +42,10 @@ export const DEFAULT_SCENARIO_ALERT_SETTINGS: ScenarioAlertSettings = {
   sharedFocusedSystemMessageKey: null,
   sharedDrawerSelectionKey: null,
   eventSounds: {
-    rocket: { enabled: true, maxPlaySeconds: null },
-    drone: { enabled: true, maxPlaySeconds: null },
-    earlyWarning: { enabled: true, maxPlaySeconds: null },
-    incidentEnded: { enabled: false, maxPlaySeconds: null },
+    rocket: { enabled: true, mode: 'long' },
+    drone: { enabled: true, mode: 'long' },
+    earlyWarning: { enabled: true, mode: 'long' },
+    incidentEnded: { enabled: false, mode: 'long' },
   },
 }
 
