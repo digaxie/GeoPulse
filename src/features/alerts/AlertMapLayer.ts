@@ -16,11 +16,16 @@ import {
 } from '@/features/alerts/styles'
 import { isAlertRecent, type AlertCityDetail, type RocketAlert } from '@/features/alerts/types'
 
+export type WarningCityPoint = AlertCityDetail & {
+  color: string
+  family: 'early_warning' | 'incident_ended'
+}
+
 export type AlertBindings = {
   syncAlerts: (alerts: RocketAlert[]) => void
   setSelectedAlert: (alertId: string | null) => void
   setFocusedAlerts: (alerts: RocketAlert[] | null) => void
-  setWarningCities: (cities: AlertCityDetail[] | null, color?: string) => void
+  setWarningCities: (cities: WarningCityPoint[] | null) => void
   clearAll: () => void
   destroy: () => void
 }
@@ -305,7 +310,7 @@ export function createAlertLayer(map: OlMap) {
       syncFocusedAlertFeature()
     },
 
-    setWarningCities(cities, color) {
+    setWarningCities(cities) {
       for (const feature of warningFeatures) {
         source.removeFeature(feature)
       }
@@ -321,7 +326,7 @@ export function createAlertLayer(map: OlMap) {
           geometry: new Point(fromLonLat([city.lon, city.lat])),
         })
         feature.set('warningCity', true)
-        feature.setStyle(createWarningStyle(city.name, false, color))
+        feature.setStyle(createWarningStyle(city.name, false, city.color))
         source.addFeature(feature)
         warningFeatures.push(feature)
       }

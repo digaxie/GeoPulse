@@ -198,6 +198,34 @@ export const scenarioAlertSettingsSchema = z
     sharedFocusedSystemMessageId: z.number().int().nullable().optional(),
     soundEnabled: z.boolean().optional(),
     volume: z.number().min(0).max(1).optional(),
+    eventSounds: z
+      .object({
+        rocket: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
+          })
+          .optional(),
+        drone: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
+          })
+          .optional(),
+        earlyWarning: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
+          })
+          .optional(),
+        incidentEnded: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxPlaySeconds: z.number().int().min(1).max(30).nullable().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .transform((input) => {
     const legacySoundEnabled =
@@ -222,6 +250,40 @@ export const scenarioAlertSettingsSchema = z
       sharedDrawerSelectionKey:
         input.sharedDrawerSelectionKey ??
         DEFAULT_SCENARIO_ALERT_SETTINGS.sharedDrawerSelectionKey,
+      eventSounds: {
+        rocket: {
+          enabled:
+            input.eventSounds?.rocket?.enabled ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.rocket.enabled,
+          maxPlaySeconds:
+            input.eventSounds?.rocket?.maxPlaySeconds ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.rocket.maxPlaySeconds,
+        },
+        drone: {
+          enabled:
+            input.eventSounds?.drone?.enabled ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.drone.enabled,
+          maxPlaySeconds:
+            input.eventSounds?.drone?.maxPlaySeconds ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.drone.maxPlaySeconds,
+        },
+        earlyWarning: {
+          enabled:
+            input.eventSounds?.earlyWarning?.enabled ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.earlyWarning.enabled,
+          maxPlaySeconds:
+            input.eventSounds?.earlyWarning?.maxPlaySeconds ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.earlyWarning.maxPlaySeconds,
+        },
+        incidentEnded: {
+          enabled:
+            input.eventSounds?.incidentEnded?.enabled ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.incidentEnded.enabled,
+          maxPlaySeconds:
+            input.eventSounds?.incidentEnded?.maxPlaySeconds ??
+            DEFAULT_SCENARIO_ALERT_SETTINGS.eventSounds.incidentEnded.maxPlaySeconds,
+        },
+      },
     }
   })
 export const briefingSlideSchema = z.object({

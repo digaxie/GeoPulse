@@ -3964,6 +3964,31 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   line-height: 1.4;
 }
 
+.alerts-event-sound-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.alerts-event-sound-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.alerts-event-sound-duration {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink-500);
+  font-size: 0.76rem;
+}
+
+.alerts-event-sound-duration select {
+  min-width: 7rem;
+}
+
 .alerts-clear-button {
   width: 100%;
   justify-content: center;
@@ -4028,10 +4053,10 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 
-.alerts-card-red    { border-left-color: #dc2626; }
-.alerts-card-green  { border-left-color: #16a34a; }
-.alerts-card-orange { border-left-color: #e89200; }
-.alerts-card-blue   { border-left-color: #3b82f6; }
+.alerts-card-rocket         { border-left-color: #7f1d1d; }
+.alerts-card-drone          { border-left-color: #5b3a29; }
+.alerts-card-early-warning  { border-left-color: #7c2d12; }
+.alerts-card-incident-ended { border-left-color: #14532d; }
 
 .alerts-card-live {
   background: rgba(220, 38, 38, 0.07);
@@ -4078,8 +4103,20 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
 }
 
 .alerts-card-icon {
-  font-size: 1.4rem;
+  --alert-icon-size: 1.4rem;
+  width: var(--alert-icon-size);
+  height: var(--alert-icon-size);
   flex-shrink: 0;
+  display: inline-block;
+  background-color: currentColor;
+  mask-image: var(--alert-icon-mask);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: var(--alert-icon-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
 
 /* City chips — Tzofar-style clickable tags */
@@ -4112,24 +4149,24 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   transform: scale(0.97);
 }
 
-.alerts-city-chip-red {
-  background: rgba(220, 38, 38, 0.12);
-  color: #b91c1c;
+.alerts-city-chip-rocket {
+  background: rgba(127, 29, 29, 0.16);
+  color: #991b1b;
 }
 
-.alerts-city-chip-green {
-  background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
+.alerts-city-chip-drone {
+  background: rgba(91, 58, 41, 0.18);
+  color: #7c4a2f;
 }
 
-.alerts-city-chip-orange {
-  background: rgba(232, 146, 0, 0.12);
+.alerts-city-chip-early-warning {
+  background: rgba(124, 45, 18, 0.16);
   color: #b45309;
 }
 
-.alerts-city-chip-blue {
-  background: rgba(59, 130, 246, 0.12);
-  color: #1d4ed8;
+.alerts-city-chip-incident-ended {
+  background: rgba(20, 83, 45, 0.16);
+  color: #15803d;
 }
 
 .alerts-city-chip-more {
@@ -4731,6 +4768,26 @@ button.alerts-card:hover { box-shadow: 0 10px 22px rgba(67, 94, 141, 0.12); }
   border-radius: 0.85rem;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.alert-drawer-card-grouped-member-rocket {
+  background: rgba(127, 29, 29, 0.12);
+  border-color: rgba(127, 29, 29, 0.28);
+}
+
+.alert-drawer-card-grouped-member-drone {
+  background: rgba(91, 58, 41, 0.12);
+  border-color: rgba(91, 58, 41, 0.28);
+}
+
+.alert-drawer-card-grouped-member-early-warning {
+  background: rgba(124, 45, 18, 0.14);
+  border-color: rgba(124, 45, 18, 0.28);
+}
+
+.alert-drawer-card-grouped-member-incident-ended {
+  background: rgba(20, 83, 45, 0.14);
+  border-color: rgba(20, 83, 45, 0.28);
 }
 
 .alert-drawer-card-grouped-member-meta {

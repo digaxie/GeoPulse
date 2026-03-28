@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatTimelineDualTime } from '@/features/alerts/types'
 import type {
@@ -8,6 +8,7 @@ import type {
   DrawerGroupMemberViewModel,
 } from '@/features/alerts/alertDrawerModel'
 import { normalizeDrawerSearchText } from '@/features/alerts/alertDrawerModel'
+import { withBasePath } from '@/lib/paths'
 
 type AlertDrawerProps = {
   collapsed: boolean
@@ -24,6 +25,13 @@ const INITIAL_VISIBLE_COUNT = 60
 const VISIBLE_COUNT_STEP = 60
 const MINUTE_MS = 60_000
 const SEARCH_DEBOUNCE_MS = 200
+
+const ALERT_DRAWER_ICON_PATHS: Record<DrawerCardViewModel['iconKey'], string> = {
+  rocket: withBasePath('/alert-icons/missile.svg'),
+  drone: withBasePath('/alert-icons/iha.svg'),
+  'early-warning': withBasePath('/alert-icons/early_warning.svg'),
+  'incident-ended': withBasePath('/alert-icons/incident_ended.svg'),
+}
 
 function isCityFocusable(city: DrawerCity) {
   return city.lat != null && city.lon != null && city.lat !== 0 && city.lon !== 0
@@ -240,7 +248,10 @@ function DrawerGroupMembers({
   return (
     <div className="alert-drawer-item-expanded">
       {members.map((member) => (
-        <section className="alert-drawer-card-grouped-member" key={member.key}>
+        <section
+          className={`alert-drawer-card-grouped-member alert-drawer-card-grouped-member-${member.color}`}
+          key={member.key}
+        >
           <div className="alert-drawer-card-grouped-member-meta">
             <strong>{member.title}</strong>
             <span>{formatAbsoluteTime(member.timestampMs)}</span>
@@ -301,6 +312,13 @@ const AlertDrawerCard = memo(function AlertDrawerCard({
   }, [item, relativeNow])
   const totalCityCount = item.totalCityCount
   const previewHiddenCount = Math.max(0, totalCityCount - item.previewCities.length)
+  const iconStyle = useMemo(
+    () =>
+      ({
+        '--alert-icon-mask': `url("${ALERT_DRAWER_ICON_PATHS[item.iconKey]}")`,
+      }) as CSSProperties,
+    [item.iconKey],
+  )
 
   return (
     <div className="alerts-card-wrapper alert-drawer-item">
@@ -316,9 +334,7 @@ const AlertDrawerCard = memo(function AlertDrawerCard({
           <span className="alerts-card-time">{relativeTime}</span>
           <span className="alerts-card-area">{item.body}</span>
         </div>
-        <span aria-hidden="true" className="alerts-card-icon">
-          {item.icon}
-        </span>
+        <span aria-hidden="true" className={`alerts-card-icon alerts-card-icon-${item.color}`} style={iconStyle} />
       </button>
 
       {!selected ? (

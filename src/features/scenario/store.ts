@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { fromLonLat, toLonLat } from 'ol/proj'
 
-import { DEFAULT_SCENARIO_ALERT_SETTINGS } from '@/features/alerts/types'
+import { DEFAULT_SCENARIO_ALERT_SETTINGS, type AlertEventSoundFamily } from '@/features/alerts/types'
 import { backfillUploadedAssetSnapshots } from '@/features/assets/assetSnapshots'
 import { getEstimatedFlightDurationMs, getHostileInterceptSnapshot } from '@/features/missiles/flightAnimation'
 import { haversineDistance } from '@/features/missiles/geodesic'
@@ -113,6 +113,11 @@ type ScenarioStore = {
   setEditorAlertVolume: (volume: number) => void
   setPresentationAlertSoundEnabled: (enabled: boolean) => void
   setPresentationAlertVolume: (volume: number) => void
+  setAlertEventSoundEnabled: (family: AlertEventSoundFamily, enabled: boolean) => void
+  setAlertEventSoundMaxPlaySeconds: (
+    family: AlertEventSoundFamily,
+    seconds: number | null,
+  ) => void
   setBannerAutoDismissSec: (seconds: number) => void
   setSharedAlertPresentationState: (input: {
     selectedAlertId: string | null
@@ -780,6 +785,71 @@ export const useScenarioStore = create<ScenarioStore>((set, get) => ({
             alerts: {
               ...alertsState,
               presentationVolume: nextVolume,
+            },
+          },
+          { trackHistory: false },
+        ),
+      }
+    })
+  },
+
+  setAlertEventSoundEnabled(family, enabled) {
+    set((current) => {
+      const alertsState = getAlertSettings(current.document)
+      const currentFamilyState = alertsState.eventSounds[family]
+      if (currentFamilyState.enabled === enabled) {
+        return current
+      }
+
+      return {
+        ...applyMutation(
+          current,
+          {
+            ...current.document,
+            alerts: {
+              ...alertsState,
+              eventSounds: {
+                ...alertsState.eventSounds,
+                [family]: {
+                  ...currentFamilyState,
+                  enabled,
+                },
+              },
+            },
+          },
+          { trackHistory: false },
+        ),
+      }
+    })
+  },
+
+  setAlertEventSoundMaxPlaySeconds(family, seconds) {
+    set((current) => {
+      const alertsState = getAlertSettings(current.document)
+      const currentFamilyState = alertsState.eventSounds[family]
+      const nextSeconds =
+        seconds === null
+          ? null
+          : Math.round(clamp(seconds, 1, 30))
+
+      if (currentFamilyState.maxPlaySeconds === nextSeconds) {
+        return current
+      }
+
+      return {
+        ...applyMutation(
+          current,
+          {
+            ...current.document,
+            alerts: {
+              ...alertsState,
+              eventSounds: {
+                ...alertsState.eventSounds,
+                [family]: {
+                  ...currentFamilyState,
+                  maxPlaySeconds: nextSeconds,
+                },
+              },
             },
           },
           { trackHistory: false },

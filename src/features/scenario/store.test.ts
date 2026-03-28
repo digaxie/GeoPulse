@@ -36,6 +36,26 @@ describe('useScenarioStore', () => {
     expect(useScenarioStore.getState().history.length).toBe(historyLength)
   })
 
+  it('toggles event sound enablement without polluting history', () => {
+    const historyLength = useScenarioStore.getState().history.length
+
+    useScenarioStore.getState().setAlertEventSoundEnabled('earlyWarning', false)
+
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.earlyWarning.enabled).toBe(false)
+    expect(useScenarioStore.getState().history.length).toBe(historyLength)
+  })
+
+  it('stores capped event sound max play seconds', () => {
+    useScenarioStore.getState().setAlertEventSoundMaxPlaySeconds('rocket', 45)
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.maxPlaySeconds).toBe(30)
+
+    useScenarioStore.getState().setAlertEventSoundMaxPlaySeconds('rocket', 0)
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.maxPlaySeconds).toBe(1)
+
+    useScenarioStore.getState().setAlertEventSoundMaxPlaySeconds('rocket', null)
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.maxPlaySeconds).toBeNull()
+  })
+
   it('stores reference zoom for new text elements', () => {
     const store = useScenarioStore.getState()
     store.setViewport(
@@ -327,6 +347,12 @@ describe('useScenarioStore', () => {
       autoZoomEnabled: false,
       editorSoundEnabled: true,
       editorVolume: 0.8,
+      eventSounds: {
+        drone: { enabled: true, maxPlaySeconds: null },
+        earlyWarning: { enabled: true, maxPlaySeconds: null },
+        incidentEnded: { enabled: false, maxPlaySeconds: null },
+        rocket: { enabled: true, maxPlaySeconds: null },
+      },
       presentationSoundEnabled: true,
       presentationVolume: 0.35,
       bannerAutoDismissSec: 15,

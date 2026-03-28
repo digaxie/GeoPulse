@@ -2,14 +2,13 @@ import {
   formatAlertShelterInstruction,
   getAlertTypeLabel,
   getSystemMessageStreamKey,
-  getTimelineItemColor,
-  getTimelineItemIcon,
   groupAlertCitiesByZone,
   type RocketAlert,
 } from '@/features/alerts/types'
 import type { EnrichedCity, TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 
-type DrawerCardColor = 'red' | 'green' | 'orange' | 'blue'
+type DrawerCardColor = 'rocket' | 'drone' | 'early-warning' | 'incident-ended'
+type DrawerCardIconKey = 'rocket' | 'drone' | 'early-warning' | 'incident-ended'
 export type DrawerEventFamily = 'rocket' | 'drone' | 'early_warning' | 'incident_ended'
 
 export type DrawerCardItem =
@@ -49,7 +48,7 @@ export type DrawerGroupMemberViewModel = {
   kind: 'alert' | 'system'
   timestampMs: number
   color: DrawerCardColor
-  icon: string
+  iconKey: DrawerCardIconKey
   title: string
   body: string
   groups: DrawerCityGroup[]
@@ -64,7 +63,7 @@ export type DrawerCardViewModel =
       timestampMs: number
       isLive: boolean
       color: DrawerCardColor
-      icon: string
+      iconKey: DrawerCardIconKey
       title: string
       body: string
       searchText: string
@@ -80,7 +79,7 @@ export type DrawerCardViewModel =
       timestampMs: number
       isLive: boolean
       color: DrawerCardColor
-      icon: string
+      iconKey: DrawerCardIconKey
       title: string
       body: string
       searchText: string
@@ -97,7 +96,7 @@ export type DrawerCardViewModel =
       timeRangeEndMs: number
       isLive: boolean
       color: DrawerCardColor
-      icon: string
+      iconKey: DrawerCardIconKey
       title: string
       body: string
       searchText: string
@@ -134,11 +133,7 @@ function getUniqueCities(cities: DrawerCity[]) {
   const nextCities: DrawerCity[] = []
 
   for (const city of cities) {
-    const key = [
-      city.name.trim().toLowerCase(),
-      city.lat ?? 'na',
-      city.lon ?? 'na',
-    ].join('|')
+    const key = [city.name.trim().toLowerCase(), city.lat ?? 'na', city.lon ?? 'na'].join('|')
     if (seen.has(key)) {
       continue
     }
@@ -246,33 +241,51 @@ function getCardBody(item: DrawerCardItem) {
   return item.message.bodyEn || item.message.bodyHe || ''
 }
 
-function buildStandaloneColor(item: DrawerCardItem): DrawerCardColor {
-  return getTimelineItemColor(
-    item.kind === 'alert'
-      ? { kind: 'alert', alert: item.alert, timestampMs: item.timestampMs, isActive: item.isLive }
-      : { kind: 'system', message: item.message, timestampMs: item.timestampMs },
-  )
+function getFamilyColor(family: DrawerEventFamily): DrawerCardColor {
+  switch (family) {
+    case 'rocket':
+      return 'rocket'
+    case 'drone':
+      return 'drone'
+    case 'early_warning':
+      return 'early-warning'
+    case 'incident_ended':
+      return 'incident-ended'
+  }
 }
 
-function buildStandaloneIcon(item: DrawerCardItem): string {
-  return getTimelineItemIcon(
-    item.kind === 'alert'
-      ? { kind: 'alert', alert: item.alert, timestampMs: item.timestampMs, isActive: item.isLive }
-      : { kind: 'system', message: item.message, timestampMs: item.timestampMs },
-  )
+function getFamilyIconKey(family: DrawerEventFamily): DrawerCardIconKey {
+  switch (family) {
+    case 'rocket':
+      return 'rocket'
+    case 'drone':
+      return 'drone'
+    case 'early_warning':
+      return 'early-warning'
+    case 'incident_ended':
+      return 'incident-ended'
+  }
+}
+
+function buildStandaloneColor(item: DrawerCardItem): DrawerCardColor {
+  const family = getItemFamily(item)
+  return family ? getFamilyColor(family) : 'rocket'
+}
+
+function buildStandaloneIconKey(item: DrawerCardItem): DrawerCardIconKey {
+  const family = getItemFamily(item)
+  return family ? getFamilyIconKey(family) : 'rocket'
 }
 
 function buildStandaloneSearchText(title: string, body: string, groups: DrawerCityGroup[]) {
-  return normalizeDrawerSearchText([
-    title,
-    body,
-    ...groups.flatMap((group) => [group.zone, ...group.cities.map((city) => city.name)]),
-  ].join(' '))
+  return normalizeDrawerSearchText(
+    [title, body, ...groups.flatMap((group) => [group.zone, ...group.cities.map((city) => city.name)])].join(' '),
+  )
 }
 
 function buildStandaloneViewModel(item: DrawerCardItem): Extract<DrawerCardViewModel, { kind: 'alert' | 'system' }> {
   const color = buildStandaloneColor(item)
-  const icon = buildStandaloneIcon(item)
+  const iconKey = buildStandaloneIconKey(item)
   const title = getCardTitle(item)
   const body = getCardBody(item)
   const groups = getCardGroups(item)
@@ -289,7 +302,7 @@ function buildStandaloneViewModel(item: DrawerCardItem): Extract<DrawerCardViewM
       timestampMs: item.timestampMs,
       isLive: item.isLive,
       color,
-      icon,
+      iconKey,
       title,
       body,
       searchText,
@@ -312,7 +325,7 @@ function buildStandaloneViewModel(item: DrawerCardItem): Extract<DrawerCardViewM
     timestampMs: item.timestampMs,
     isLive: item.isLive,
     color,
-    icon,
+    iconKey,
     title,
     body,
     searchText,
@@ -327,9 +340,9 @@ function getGroupFamilyLabel(family: DrawerEventFamily) {
     case 'rocket':
       return 'Roket'
     case 'drone':
-      return 'İHA'
+      return 'IHA'
     case 'early_warning':
-      return 'Erken uyarı'
+      return 'Early warning'
     case 'incident_ended':
       return 'Olay sonu'
   }
@@ -377,7 +390,7 @@ function getGroupZoneTitle(memberViews: DrawerGroupMemberViewModel[]) {
     return zones.join(', ')
   }
 
-  return `${zones.slice(0, 3).join(', ')}, +${zones.length - 3} bölge`
+  return `${zones.slice(0, 3).join(', ')}, +${zones.length - 3} bolge`
 }
 
 function buildGroupSearchText(
@@ -386,16 +399,18 @@ function buildGroupSearchText(
   memberViews: DrawerGroupMemberViewModel[],
   previewCities: DrawerCity[],
 ) {
-  return normalizeDrawerSearchText([
-    title,
-    body,
-    ...memberViews.flatMap((member) => [
-      member.title,
-      member.body,
-      ...member.groups.flatMap((group) => [group.zone, ...group.cities.map((city) => city.name)]),
-    ]),
-    ...previewCities.map((city) => city.name),
-  ].join(' '))
+  return normalizeDrawerSearchText(
+    [
+      title,
+      body,
+      ...memberViews.flatMap((member) => [
+        member.title,
+        member.body,
+        ...member.groups.flatMap((group) => [group.zone, ...group.cities.map((city) => city.name)]),
+      ]),
+      ...previewCities.map((city) => city.name),
+    ].join(' '),
+  )
 }
 
 function buildGroupedFamilyItems(
@@ -485,23 +500,18 @@ function buildGroupViewModel(item: DrawerGroupedItem): Extract<DrawerCardViewMod
       kind: view.kind,
       timestampMs: view.timestampMs,
       color: view.color,
-      icon: view.icon,
+      iconKey: view.iconKey,
       title: view.title,
       body: view.body,
       groups: view.groups,
     } satisfies DrawerGroupMemberViewModel
   })
 
-  const uniqueCities = getUniqueCities(
-    memberViews.flatMap((member) =>
-      member.groups.flatMap((group) => group.cities),
-    ),
-  )
+  const uniqueCities = getUniqueCities(memberViews.flatMap((member) => member.groups.flatMap((group) => group.cities)))
   const previewCities = uniqueCities.slice(0, DRAWER_PREVIEW_CITY_LIMIT)
   const title = getGroupZoneTitle(memberViews)
-  const body = `${getGroupFamilyLabel(item.family)} • ${memberViews.length} olay • ${uniqueCities.length} şehir`
+  const body = `${getGroupFamilyLabel(item.family)} - ${memberViews.length} olay - ${uniqueCities.length} sehir`
   const searchText = buildGroupSearchText(title, body, memberViews, uniqueCities)
-  const firstMember = memberViews[0]
 
   return {
     key: item.key,
@@ -511,8 +521,8 @@ function buildGroupViewModel(item: DrawerGroupedItem): Extract<DrawerCardViewMod
     timeRangeStartMs: item.timeRangeStartMs,
     timeRangeEndMs: item.timeRangeEndMs,
     isLive: item.isLive,
-    color: firstMember?.color ?? 'red',
-    icon: firstMember?.icon ?? '•',
+    color: getFamilyColor(item.family),
+    iconKey: getFamilyIconKey(item.family),
     title,
     body,
     searchText,

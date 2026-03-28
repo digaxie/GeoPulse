@@ -42,6 +42,12 @@ describe('alert presentation helpers', () => {
           autoZoomEnabled: true,
           editorSoundEnabled: true,
           editorVolume: 0.8,
+          eventSounds: {
+            rocket: { enabled: true, maxPlaySeconds: null },
+            drone: { enabled: true, maxPlaySeconds: null },
+            earlyWarning: { enabled: true, maxPlaySeconds: null },
+            incidentEnded: { enabled: false, maxPlaySeconds: null },
+          },
           presentationSoundEnabled: false,
           presentationVolume: 0.3,
           bannerAutoDismissSec: 15,

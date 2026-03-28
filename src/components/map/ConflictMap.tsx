@@ -43,15 +43,20 @@ import {
   type WorldFeatureCollections,
   type WorldSources,
 } from '@/components/map/conflictMapScene'
-import { createAlertLayer, type AlertBindings } from '@/features/alerts/AlertMapLayer'
+import {
+  createAlertLayer,
+  type AlertBindings,
+  type WarningCityPoint,
+} from '@/features/alerts/AlertMapLayer'
 import {
   type AlertAudioRole,
+  type AlertEventSoundFamily,
   type AlertCityDetail,
   type AlertFeedStatus,
   DEFAULT_SCENARIO_ALERT_SETTINGS,
   getAlertAudioSettingsForRole,
-  getSystemMessageStreamKey,
   getAlertSirenThrottleWindowMs,
+  getSystemMessageStreamKey,
   isGroupedIncidentAlert,
   isIncidentStreamSystemMessage,
   type RocketAlert,
@@ -200,6 +205,17 @@ type TabRestoreOverlayMode = 'frame' | 'scrim'
 type AlertAudioUnlockState = 'locked' | 'priming' | 'unlocked' | 'blocked'
 
 const log = createLogger('ConflictMap')
+const SIREN_AUDIO_ASSET_PATH = withBasePath('/sounds/siren.mp3')
+const EARLY_WARNING_AUDIO_ASSET_PATH = withBasePath('/sounds/early_warning_alert.mp3')
+const EARLY_WARNING_PIN_COLOR = '#d97706'
+const INCIDENT_ENDED_PIN_COLOR = '#166534'
+
+const ALERT_AUDIO_ASSET_BY_FAMILY: Record<AlertEventSoundFamily, string> = {
+  rocket: SIREN_AUDIO_ASSET_PATH,
+  drone: SIREN_AUDIO_ASSET_PATH,
+  earlyWarning: EARLY_WARNING_AUDIO_ASSET_PATH,
+  incidentEnded: SIREN_AUDIO_ASSET_PATH,
+}
 
 const landPalettes: Record<LandPalette, string[]> = {
   broadcast: [
@@ -451,6 +467,56 @@ function collectWarningCities(messages: TzevaadomSystemMessage[]): AlertCityDeta
   }
 
   return cities
+}
+
+function getAlertEventSoundFamily(alert: Pick<RocketAlert, 'alertTypeId'>): AlertEventSoundFamily {
+  return alert.alertTypeId === 2 ? 'drone' : 'rocket'
+}
+
+function getSystemMessageEventSoundFamily(
+  message: Pick<TzevaadomSystemMessage, 'type'>,
+): Extract<AlertEventSoundFamily, 'earlyWarning' | 'incidentEnded'> | null {
+  if (message.type === 'early_warning') {
+    return 'earlyWarning'
+  }
+
+  if (message.type === 'incident_ended') {
+    return 'incidentEnded'
+  }
+
+  return null
+}
+
+function getWarningFamilyColor(family: WarningCityPoint['family']) {
+  return family === 'incident_ended' ? INCIDENT_ENDED_PIN_COLOR : EARLY_WARNING_PIN_COLOR
+}
+
+function collectWarningPointCities(
+  messages: TzevaadomSystemMessage[],
+  family: WarningCityPoint['family'],
+): WarningCityPoint[] {
+  return collectWarningCities(messages).map((city) => ({
+    ...city,
+    family,
+    color: getWarningFamilyColor(family),
+  }))
+}
+
+function dedupeWarningPointCities(cities: WarningCityPoint[]) {
+  const seen = new Set<string>()
+  const nextCities: WarningCityPoint[] = []
+
+  for (const city of cities) {
+    const key = [city.name, city.lat, city.lon, city.family].join('|')
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    nextCities.push(city)
+  }
+
+  return nextCities
 }
 
 function getStringProperty(
@@ -1063,6 +1129,7 @@ export function ConflictMap({
   const alertsEnabledRef = useRef(alertsEnabled)
   const alertSoundEnabledRef = useRef(alertSoundEnabled)
   const alertVolumeRef = useRef(alertVolume)
+  const alertEventSoundsRef = useRef(alertSettings.eventSounds)
   const viewportCommitTimeoutRef = useRef<number | null>(null)
   const tabLifecycleStateRef = useRef<TabMapLifecycleState>('active')
   const savedViewStateRef = useRef<SavedViewState | null>(null)
@@ -1074,13 +1141,15 @@ export function ConflictMap({
   const restoreFinalizeSecondFrameRef = useRef<number | null>(null)
   const restoreFinalizeTokenRef = useRef(0)
   const restoreFinalizeSourceRef = useRef<'rendercomplete' | 'timeout' | null>(null)
-  const alertAudioRef = useRef<HTMLAudioElement | null>(null)
+  const alertAudioPlayersRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  const alertAudioDurationsRef = useRef<Map<string, number>>(new Map())
+  const alertAudioLoadFailuresRef = useRef<Set<string>>(new Set())
   const alertAudioUnlockStateRef = useRef<AlertAudioUnlockState>('locked')
   const alertAudioPrimePromiseRef = useRef<Promise<void> | null>(null)
-  const alertPendingSirenAfterUnlockRef = useRef(false)
-  const alertSirenPlayPendingRef = useRef(false)
-  const alertLastSirenStartedAtRef = useRef(0)
-  const alertSirenDurationMsRef = useRef(1000)
+  const alertPendingSoundFamilyAfterUnlockRef = useRef<AlertEventSoundFamily | null>(null)
+  const alertAssetPlayPendingRef = useRef<Map<string, boolean>>(new Map())
+  const alertLastAssetStartedAtRef = useRef<Map<string, number>>(new Map())
+  const alertAudioStopTimerIdsRef = useRef<Map<string, number>>(new Map())
   const alertAutoZoomMutedUntilRef = useRef(0)
   const pendingAlertAutoZoomRef = useRef<RocketAlert[]>([])
   const alertSkipSelectedFocusOnceRef = useRef(false)
@@ -1155,6 +1224,11 @@ export function ConflictMap({
       .filter((alert): alert is RocketAlert => alert !== null)
   }, [alerts, historyAlerts, selectedGroupedDrawerItem])
 
+  const systemMessagesByKey = useMemo(
+    () => new Map(systemMessages.map((message) => [getSystemMessageStreamKey(message), message])),
+    [systemMessages],
+  )
+
   const selectedGroupSystemMembers = useMemo(() => {
     if (
       !selectedGroupedDrawerItem ||
@@ -1164,19 +1238,58 @@ export function ConflictMap({
       return [] as TzevaadomSystemMessage[]
     }
 
-    const messagesByKey = new Map(
-      systemMessages.map((message) => [getSystemMessageStreamKey(message), message]),
-    )
-
     return selectedGroupedDrawerItem.memberSystemMessageKeys
-      .map((messageKey) => messagesByKey.get(messageKey) ?? null)
+      .map((messageKey) => systemMessagesByKey.get(messageKey) ?? null)
       .filter((message): message is TzevaadomSystemMessage => message !== null)
-  }, [selectedGroupedDrawerItem, systemMessages])
+  }, [selectedGroupedDrawerItem, systemMessagesByKey])
 
   const selectedGroupWarningCities = useMemo(
-    () => collectWarningCities(selectedGroupSystemMembers),
-    [selectedGroupSystemMembers],
+    () =>
+      selectedGroupedDrawerItem?.family === 'incident_ended'
+        ? collectWarningPointCities(selectedGroupSystemMembers, 'incident_ended')
+        : collectWarningPointCities(selectedGroupSystemMembers, 'early_warning'),
+    [selectedGroupSystemMembers, selectedGroupedDrawerItem?.family],
   )
+
+  const activeEarlyWarningMessages = useMemo(
+    () =>
+      incidentStreamItems
+        .filter((item): item is Extract<(typeof incidentStreamItems)[number], { kind: 'system' }> => item.kind === 'system')
+        .map((item) => systemMessagesByKey.get(item.systemMessageKey) ?? null)
+        .filter(
+          (message): message is TzevaadomSystemMessage =>
+            message !== null && message.type === 'early_warning',
+        ),
+    [incidentStreamItems, systemMessagesByKey],
+  )
+
+  const activeEarlyWarningPoints = useMemo(
+    () => collectWarningPointCities(activeEarlyWarningMessages, 'early_warning'),
+    [activeEarlyWarningMessages],
+  )
+
+  const focusedWarningPoints = useMemo(() => {
+    if (!focusedSystemMessageKey) {
+      return [] as WarningCityPoint[]
+    }
+
+    const message = systemMessagesByKey.get(focusedSystemMessageKey)
+    if (!message) {
+      return [] as WarningCityPoint[]
+    }
+
+    const family =
+      message.type === 'incident_ended'
+        ? 'incident_ended'
+        : message.type === 'early_warning'
+          ? 'early_warning'
+          : null
+    if (!family) {
+      return [] as WarningCityPoint[]
+    }
+
+    return collectWarningPointCities([message], family)
+  }, [focusedSystemMessageKey, systemMessagesByKey])
 
   const selectedDrawerItemKey = useMemo(() => {
     if (
@@ -1211,9 +1324,10 @@ export function ConflictMap({
     alertsEnabledRef.current = alertsEnabled
     alertSoundEnabledRef.current = alertSoundEnabled
     alertVolumeRef.current = alertVolume
+    alertEventSoundsRef.current = alertSettings.eventSounds
     alertAudioUnlockStateRef.current = alertAudioUnlockState
     elementOrderRef.current = new Map(visibleElements.map((element, index) => [element.id, index]))
-  }, [alertAudioUnlockState, alertSoundEnabled, alertVolume, alertsEnabled, assetMap, basemap, visibleElements, labelOptions, stylePrefs, eraserSize, readOnly, selectedElementId, tabLifecycleState, zoom])
+  }, [alertAudioUnlockState, alertSettings.eventSounds, alertSoundEnabled, alertVolume, alertsEnabled, assetMap, basemap, visibleElements, labelOptions, stylePrefs, eraserSize, readOnly, selectedElementId, tabLifecycleState, zoom])
 
   const fitMapToLonLatPoints = useCallback((points: [number, number][]) => {
     const map = mapRef.current
@@ -1377,85 +1491,189 @@ export function ConflictMap({
     setAlertAudioUnlockState(nextState)
   }, [])
 
-  const getOrCreateAlertAudio = useCallback(() => {
-    if (alertAudioRef.current) {
-      return alertAudioRef.current
+  const getAlertAudioAssetPath = useCallback((family: AlertEventSoundFamily) => {
+    return ALERT_AUDIO_ASSET_BY_FAMILY[family]
+  }, [])
+
+  const getConfiguredEventSound = useCallback((family: AlertEventSoundFamily) => {
+    return alertEventSoundsRef.current[family]
+  }, [])
+
+  const markAlertAudioLoadFailure = useCallback((assetPath: string, error?: unknown) => {
+    if (alertAudioLoadFailuresRef.current.has(assetPath)) {
+      return
     }
 
-    const nextAudio = new Audio(withBasePath('/sounds/siren.mp3'))
+    alertAudioLoadFailuresRef.current.add(assetPath)
+    log.warn('Alert audio failed to load', { assetPath, error })
+  }, [])
+
+  const getOrCreateAlertAudio = useCallback((assetPath: string) => {
+    const existing = alertAudioPlayersRef.current.get(assetPath)
+    if (existing) {
+      return existing
+    }
+
+    const nextAudio = new Audio(assetPath)
     nextAudio.preload = 'auto'
 
     const syncDuration = () => {
       if (Number.isFinite(nextAudio.duration) && nextAudio.duration > 0) {
-        alertSirenDurationMsRef.current = Math.round(nextAudio.duration * 1000)
+        alertAudioDurationsRef.current.set(assetPath, Math.round(nextAudio.duration * 1000))
       }
     }
 
     nextAudio.addEventListener('loadedmetadata', syncDuration)
     nextAudio.addEventListener('durationchange', syncDuration)
-    alertAudioRef.current = nextAudio
+    nextAudio.addEventListener('error', () => {
+      markAlertAudioLoadFailure(assetPath)
+    })
+
+    alertAudioPlayersRef.current.set(assetPath, nextAudio)
     return nextAudio
-  }, [])
+  }, [markAlertAudioLoadFailure])
 
-  const stopAlertSiren = useCallback(() => {
-    alertPendingSirenAfterUnlockRef.current = false
-    alertSirenPlayPendingRef.current = false
-    if (!alertAudioRef.current) {
-      return
+  const clearAlertAudioStopTimer = useCallback((assetPath: string) => {
+    const timerId = alertAudioStopTimerIdsRef.current.get(assetPath)
+    if (typeof timerId === 'number') {
+      window.clearTimeout(timerId)
+      alertAudioStopTimerIdsRef.current.delete(assetPath)
     }
-
-    alertAudioRef.current.pause()
-    alertAudioRef.current.currentTime = 0
   }, [])
 
-  const playAlertSiren = useCallback((fromPendingUnlock = false) => {
+  const stopAlertAudioAsset = useCallback(
+    (assetPath: string) => {
+      clearAlertAudioStopTimer(assetPath)
+      alertAssetPlayPendingRef.current.delete(assetPath)
+
+      const audio = alertAudioPlayersRef.current.get(assetPath)
+      if (!audio) {
+        return
+      }
+
+      audio.pause()
+      audio.currentTime = 0
+    },
+    [clearAlertAudioStopTimer],
+  )
+
+  const stopAllAlertAudio = useCallback(() => {
+    alertPendingSoundFamilyAfterUnlockRef.current = null
+
+    for (const assetPath of alertAudioPlayersRef.current.keys()) {
+      stopAlertAudioAsset(assetPath)
+    }
+  }, [stopAlertAudioAsset])
+
+  const isEventSoundPlayable = useCallback((family: AlertEventSoundFamily) => {
     if (!alertsEnabledRef.current || !alertSoundEnabledRef.current || alertVolumeRef.current <= 0) {
-      return
+      return false
     }
 
-    if (alertAudioUnlockStateRef.current === 'priming' && !fromPendingUnlock) {
-      alertPendingSirenAfterUnlockRef.current = true
-      return
-    }
+    return getConfiguredEventSound(family).enabled
+  }, [getConfiguredEventSound])
 
-    if (alertSirenPlayPendingRef.current) {
-      return
-    }
+  const getEffectivePlaybackDurationMs = useCallback(
+    (assetPath: string, family: AlertEventSoundFamily) => {
+      const actualDurationMs = alertAudioDurationsRef.current.get(assetPath) ?? 1000
+      const maxPlaySeconds = getConfiguredEventSound(family).maxPlaySeconds
+      if (maxPlaySeconds === null) {
+        return actualDurationMs
+      }
 
-    const audio = getOrCreateAlertAudio()
-    if (!audio.paused) {
-      return
-    }
+      return Math.min(actualDurationMs, maxPlaySeconds * 1000)
+    },
+    [getConfiguredEventSound],
+  )
 
-    const now = Date.now()
-    if (
-      now - alertLastSirenStartedAtRef.current <
-      getAlertSirenThrottleWindowMs(alertSirenDurationMsRef.current)
-    ) {
-      return
-    }
+  const playEventSound = useCallback(
+    (family: AlertEventSoundFamily, fromPendingUnlock = false) => {
+      if (!isEventSoundPlayable(family)) {
+        return
+      }
 
-    audio.volume = alertVolumeRef.current
-    audio.currentTime = 0
-    alertSirenPlayPendingRef.current = true
+      const assetPath = getAlertAudioAssetPath(family)
+      if (alertAudioLoadFailuresRef.current.has(assetPath)) {
+        return
+      }
 
-    void audio
-      .play()
-      .then(() => {
-        alertSirenPlayPendingRef.current = false
-        alertLastSirenStartedAtRef.current = Date.now()
-        setAudioUnlockState('unlocked')
-      })
-      .catch(() => {
-        alertSirenPlayPendingRef.current = false
-        if (alertAudioUnlockStateRef.current === 'priming') {
-          alertPendingSirenAfterUnlockRef.current = true
-          return
-        }
+      if (alertAudioUnlockStateRef.current === 'priming' && !fromPendingUnlock) {
+        alertPendingSoundFamilyAfterUnlockRef.current = family
+        return
+      }
 
-        setAudioUnlockState('blocked')
-      })
-  }, [getOrCreateAlertAudio, setAudioUnlockState])
+      if (alertAssetPlayPendingRef.current.get(assetPath)) {
+        return
+      }
+
+      const audio = getOrCreateAlertAudio(assetPath)
+      const now = Date.now()
+      const lastStartedAt = alertLastAssetStartedAtRef.current.get(assetPath) ?? 0
+      const throttleWindowMs = getAlertSirenThrottleWindowMs(
+        getEffectivePlaybackDurationMs(assetPath, family),
+      )
+
+      if (now - lastStartedAt < throttleWindowMs) {
+        return
+      }
+
+      clearAlertAudioStopTimer(assetPath)
+      audio.pause()
+      audio.currentTime = 0
+      audio.volume = alertVolumeRef.current
+      alertAssetPlayPendingRef.current.set(assetPath, true)
+
+      void audio
+        .play()
+        .then(() => {
+          alertAssetPlayPendingRef.current.set(assetPath, false)
+          alertLastAssetStartedAtRef.current.set(assetPath, Date.now())
+          setAudioUnlockState('unlocked')
+
+          const maxPlaySeconds = getConfiguredEventSound(family).maxPlaySeconds
+          if (maxPlaySeconds !== null) {
+            const timerId = window.setTimeout(() => {
+              stopAlertAudioAsset(assetPath)
+            }, maxPlaySeconds * 1000)
+            alertAudioStopTimerIdsRef.current.set(assetPath, timerId)
+          }
+        })
+        .catch((error: unknown) => {
+          alertAssetPlayPendingRef.current.set(assetPath, false)
+
+          if (alertAudioLoadFailuresRef.current.has(assetPath)) {
+            return
+          }
+
+          if (
+            error instanceof DOMException &&
+            error.name !== 'NotAllowedError' &&
+            error.name !== 'AbortError'
+          ) {
+            markAlertAudioLoadFailure(assetPath, error)
+            return
+          }
+
+          if (alertAudioUnlockStateRef.current === 'priming') {
+            alertPendingSoundFamilyAfterUnlockRef.current = family
+            return
+          }
+
+          setAudioUnlockState('blocked')
+        })
+    },
+    [
+      clearAlertAudioStopTimer,
+      getAlertAudioAssetPath,
+      getConfiguredEventSound,
+      getEffectivePlaybackDurationMs,
+      getOrCreateAlertAudio,
+      isEventSoundPlayable,
+      markAlertAudioLoadFailure,
+      setAudioUnlockState,
+      stopAlertAudioAsset,
+    ],
+  )
 
   const primeAlertAudio = useCallback(() => {
     if (!alertsEnabledRef.current || !alertSoundEnabledRef.current || alertVolumeRef.current <= 0) {
@@ -1470,52 +1688,93 @@ export function ConflictMap({
       return
     }
 
-    const audio = getOrCreateAlertAudio()
-    audio.load()
-    setAudioUnlockState('priming')
-    audio.volume = 0
-    audio.currentTime = 0
+    const assetPaths = Array.from(
+      new Set(
+        (Object.keys(alertEventSoundsRef.current) as AlertEventSoundFamily[])
+          .filter((family) => alertEventSoundsRef.current[family].enabled)
+          .map((family) => getAlertAudioAssetPath(family)),
+      ),
+    )
 
-    const primePromise = audio
-      .play()
-      .then(() => {
-        audio.pause()
-        audio.currentTime = 0
-        audio.volume = alertVolumeRef.current
-        setAudioUnlockState('unlocked')
-      })
-      .then(() => {
-        if (
-          alertPendingSirenAfterUnlockRef.current &&
-          alertsEnabledRef.current &&
-          alertSoundEnabledRef.current &&
-          alertVolumeRef.current > 0
-        ) {
-          alertPendingSirenAfterUnlockRef.current = false
-          window.setTimeout(() => {
-            playAlertSiren(true)
-          }, 0)
-        }
-      })
-      .catch(() => {
-        alertPendingSirenAfterUnlockRef.current = false
-        setAudioUnlockState('blocked')
-      })
-      .finally(() => {
-        alertAudioPrimePromiseRef.current = null
-      })
-
-    alertAudioPrimePromiseRef.current = primePromise
-  }, [getOrCreateAlertAudio, playAlertSiren, setAudioUnlockState])
-
-  useEffect(() => {
-    if (!alertsEnabled || !alertSoundEnabled || alertVolume <= 0) {
-      stopAlertSiren()
+    if (assetPaths.length === 0) {
       return
     }
 
-    const audio = getOrCreateAlertAudio()
-    audio.load()
+    setAudioUnlockState('priming')
+
+    const primePromise = (async () => {
+      let unlocked = false
+
+      for (const assetPath of assetPaths) {
+        const audio = getOrCreateAlertAudio(assetPath)
+        audio.load()
+
+        if (alertAudioLoadFailuresRef.current.has(assetPath)) {
+          continue
+        }
+
+        audio.volume = 0
+        audio.currentTime = 0
+
+        try {
+          await audio.play()
+          audio.pause()
+          audio.currentTime = 0
+          unlocked = true
+        } catch {
+          if (alertAudioLoadFailuresRef.current.has(assetPath)) {
+            continue
+          }
+        }
+      }
+
+      if (!unlocked) {
+        alertPendingSoundFamilyAfterUnlockRef.current = null
+        setAudioUnlockState('blocked')
+        return
+      }
+
+      setAudioUnlockState('unlocked')
+
+      const pendingFamily = alertPendingSoundFamilyAfterUnlockRef.current
+      alertPendingSoundFamilyAfterUnlockRef.current = null
+      if (pendingFamily) {
+        window.setTimeout(() => {
+          playEventSound(pendingFamily, true)
+        }, 0)
+      }
+    })().finally(() => {
+      alertAudioPrimePromiseRef.current = null
+    })
+
+    alertAudioPrimePromiseRef.current = primePromise
+  }, [getAlertAudioAssetPath, getOrCreateAlertAudio, playEventSound, setAudioUnlockState])
+
+  useEffect(() => {
+    if (!alertsEnabled || !alertSoundEnabled || alertVolume <= 0) {
+      stopAllAlertAudio()
+      return
+    }
+
+    const assetPaths = Array.from(
+      new Set(
+        (Object.keys(alertSettings.eventSounds) as AlertEventSoundFamily[])
+          .filter((family) => alertSettings.eventSounds[family].enabled)
+          .map((family) => getAlertAudioAssetPath(family)),
+      ),
+    )
+
+    if (assetPaths.length === 0) {
+      return
+    }
+
+    for (const assetPath of assetPaths) {
+      if (alertAudioLoadFailuresRef.current.has(assetPath)) {
+        continue
+      }
+
+      getOrCreateAlertAudio(assetPath).load()
+    }
 
     const primeFromUserGesture = () => {
       primeAlertAudio()
@@ -1528,30 +1787,38 @@ export function ConflictMap({
       window.removeEventListener('pointerdown', primeFromUserGesture)
       window.removeEventListener('keydown', primeFromUserGesture)
     }
-  }, [alertSoundEnabled, alertVolume, alertsEnabled, getOrCreateAlertAudio, primeAlertAudio, stopAlertSiren])
+  }, [
+    alertSettings.eventSounds,
+    alertSoundEnabled,
+    alertVolume,
+    alertsEnabled,
+    getAlertAudioAssetPath,
+    getOrCreateAlertAudio,
+    primeAlertAudio,
+    stopAllAlertAudio,
+  ])
 
   useEffect(() => {
-    if (!alertAudioRef.current) {
-      return
-    }
+    const audioPlayers = alertAudioPlayersRef.current
+    const audioDurations = alertAudioDurationsRef.current
+    const pendingAssets = alertAssetPlayPendingRef.current
+    const lastStartedAtByAsset = alertLastAssetStartedAtRef.current
+    const stopTimerIds = alertAudioStopTimerIdsRef.current
 
-    alertAudioRef.current.volume = alertVolume
-  }, [alertVolume])
-
-  useEffect(() => {
     return () => {
-      if (alertAudioRef.current) {
-        alertAudioRef.current.pause()
-        alertAudioRef.current.currentTime = 0
-        alertAudioRef.current = null
-      }
+      stopAllAlertAudio()
+      audioPlayers.clear()
+      audioDurations.clear()
+      pendingAssets.clear()
+      lastStartedAtByAsset.clear()
+      stopTimerIds.clear()
     }
-  }, [])
+  }, [stopAllAlertAudio])
 
   useEffect(() => {
     if (!alertsEnabled) {
       clearAlertStore()
-      stopAlertSiren()
+      stopAllAlertAudio()
       syncDrawerGroupSelection(null)
       setFocusedSystemMessageKey(null)
       setSelectedAlertId(null)
@@ -1566,7 +1833,7 @@ export function ConflictMap({
     setAlertFeedTransport,
     setFocusedSystemMessageKey,
     setSelectedAlertId,
-    stopAlertSiren,
+    stopAllAlertAudio,
   ])
 
   useEffect(() => {
@@ -1686,8 +1953,7 @@ export function ConflictMap({
         const merged = [...currentAlerts.filter((a) => a.id !== rocketAlert.id), rocketAlert]
         setAlertStoreAlerts(merged, Date.now())
 
-        // Siren Ã§al
-        playAlertSiren()
+        playEventSound(getAlertEventSoundFamily(rocketAlert))
         setAlertDrawerCollapsed(false)
 
         if (isGroupedIncidentAlert(rocketAlert)) {
@@ -1723,6 +1989,10 @@ export function ConflictMap({
           addSystemMessage(message)
           if ((message.citiesEnriched?.length ?? 0) > 0) {
             appendIncidentStreamSystem(getSystemMessageStreamKey(message), message.receivedAtMs)
+          }
+          const soundFamily = getSystemMessageEventSoundFamily(message)
+          if (soundFamily) {
+            playEventSound(soundFamily)
           }
           if (message.type === 'early_warning') {
             setAlertDrawerCollapsed(false)
@@ -3788,31 +4058,14 @@ export function ConflictMap({
       return
     }
 
-    if (
-      selectedGroupedDrawerItem?.family === 'early_warning' ||
-      selectedGroupedDrawerItem?.family === 'incident_ended'
-    ) {
-      const pinColor = selectedGroupedDrawerItem.family === 'incident_ended' ? '#16a34a' : '#f59e0b'
-      bindings.setWarningCities(selectedGroupWarningCities, pinColor)
-      return
-    }
+    const mergedWarningPoints = dedupeWarningPointCities([
+      ...activeEarlyWarningPoints,
+      ...selectedGroupWarningCities,
+      ...focusedWarningPoints,
+    ])
 
-    if (!focusedSystemMessageKey) {
-      bindings.setWarningCities(null)
-      return
-    }
-
-    const msg = systemMessages.find((m) => getSystemMessageStreamKey(m) === focusedSystemMessageKey)
-    if (!msg?.citiesEnriched || msg.citiesEnriched.length === 0) {
-      bindings.setWarningCities(null)
-      return
-    }
-
-    const cities = collectWarningCities([msg])
-
-    const pinColor = msg.type === 'incident_ended' ? '#16a34a' : '#f59e0b'
-    bindings.setWarningCities(cities, pinColor)
-  }, [alertsEnabled, focusedSystemMessageKey, selectedGroupWarningCities, selectedGroupedDrawerItem, systemMessages])
+    bindings.setWarningCities(mergedWarningPoints.length > 0 ? mergedWarningPoints : null)
+  }, [activeEarlyWarningPoints, alertsEnabled, focusedWarningPoints, selectedGroupWarningCities])
 
   // City chip click â†’ zoom to coordinate
   const focusCoordinate = useAlertStore((state) => state.focusCoordinate)
@@ -3841,7 +4094,7 @@ export function ConflictMap({
       return
     }
 
-    const message = systemMessages.find((candidate) => getSystemMessageStreamKey(candidate) === focusedSystemMessageKey)
+    const message = systemMessagesByKey.get(focusedSystemMessageKey)
     if (!message) {
       focusedWarningSelectionKeyRef.current = null
       return
@@ -3855,7 +4108,7 @@ export function ConflictMap({
 
     focusedWarningSelectionKeyRef.current = focusedSystemMessageKey
     fitMapToLonLatPoints(points)
-  }, [alertsEnabled, fitMapToLonLatPoints, focusedSystemMessageKey, selectedGroupedDrawerItem, systemMessages])
+  }, [alertsEnabled, fitMapToLonLatPoints, focusedSystemMessageKey, selectedGroupedDrawerItem, systemMessagesByKey])
 
   useEffect(() => {
     if (!selectedGroupedDrawerItem) {
