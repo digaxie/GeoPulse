@@ -1127,22 +1127,6 @@ button:disabled {
   color: inherit;
 }
 
-.live-basemap-layer canvas {
-  transition: filter 180ms ease;
-}
-
-.map-theme-broadcast_blue .live-basemap-layer canvas {
-  filter: none;
-}
-
-.map-theme-paper_light .live-basemap-layer canvas {
-  filter: saturate(0.82) brightness(1.05) contrast(0.95);
-}
-
-.map-theme-midnight .live-basemap-layer canvas {
-  filter: brightness(0.72) saturate(0.8) contrast(1.06);
-}
-
 .site-credit {
   display: flex;
   flex-wrap: wrap;

@@ -145,6 +145,7 @@ const TOUCH_SELECT_HIT_TOLERANCE = 20
 const TOUCH_VERTEX_TOLERANCE_PX = 18
 const HUD_ROTATION_STEP = Math.PI / 12
 const TAB_RESTORE_DEADLOCK_MS = 3000
+const OPENFREEMAP_LAYER_GROUP_CLASSNAME = 'live-basemap-layer live-basemap-layer--openfreemap'
 
 type MovableHudElementKind = 'asset' | 'text' | 'polyline' | 'freehand' | 'polygon' | 'callout'
 
@@ -2379,7 +2380,9 @@ export function ConflictMap({
 
     openFreeMapStyleUrlRef.current = styleUrl
     const requestId = ++openFreeMapRequestIdRef.current
-    const nextGroup = new LayerGroup()
+    const nextGroup = new LayerGroup({
+      className: OPENFREEMAP_LAYER_GROUP_CLASSNAME,
+    } as ConstructorParameters<typeof LayerGroup>[0])
 
     try {
       await applyMapboxStyle(nextGroup, styleUrl)
@@ -2544,9 +2547,10 @@ export function ConflictMap({
       ],
     })
     const openFreeMapGroup = new LayerGroup({
+      className: OPENFREEMAP_LAYER_GROUP_CLASSNAME,
       visible: usesOpenFreeMapBasemap(basemapRef.current.preset),
       zIndex: 0,
-    })
+    } as ConstructorParameters<typeof LayerGroup>[0])
     scenarioSourceRef.current = scenarioSource
     drawSourceRef.current = drawSource
     worldSourcesRef.current = worldSources
