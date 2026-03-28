@@ -29,7 +29,6 @@ export function createDefaultScenarioDocument(): ScenarioDocument {
       backgroundPreset: 'broadcast_blue',
       oceanColor: '#a9d6ff',
       landPalette: 'broadcast',
-      performanceMode: false,
       admin1Opacity: 0.48,
       countryLabelSize: 16,
       cityLabelSize: 12,

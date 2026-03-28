@@ -2761,7 +2761,6 @@ export function ConflictMap({
     stylePrefs.cityLabelSize,
     stylePrefs.countryLabelSize,
     stylePrefs.landPalette,
-    stylePrefs.performanceMode,
     sceneSelectionKey,
   ])
 
@@ -3323,10 +3322,7 @@ export function ConflictMap({
     let resolutionRafId: number | null = null
     const syncDuringResolutionChange = () => {
       const liveZoom = view.getZoom()
-      const performanceModeActive =
-        stylePrefsRef.current.performanceMode && usesOpenFreeMapBasemap(basemapRef.current.preset)
-
-      if (typeof liveZoom === 'number' && !performanceModeActive) {
+      if (typeof liveZoom === 'number') {
         zoomRef.current = liveZoom
         if (resolutionRafId === null) {
           resolutionRafId = requestAnimationFrame(() => {

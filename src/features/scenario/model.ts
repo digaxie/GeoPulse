@@ -318,7 +318,6 @@ export const scenarioDocumentSchema = z.object({
     backgroundPreset: backgroundPresetSchema.default('broadcast_blue'),
     oceanColor: z.string().default('#a7d1ff'),
     landPalette: landPaletteSchema.default('broadcast'),
-    performanceMode: z.boolean().default(false),
     admin1Opacity: z.number().min(0).max(1).default(0.55),
     countryLabelSize: z.number().min(12).max(22).default(16),
     cityLabelSize: z.number().min(10).max(20).default(12),

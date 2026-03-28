@@ -15,7 +15,6 @@ describe('scenarioDocumentSchema', () => {
     expect(parsed.labelOptions.showDisputedOverlay).toBe(true)
     expect(parsed.scene.activeContinents).toEqual([])
     expect(parsed.scene.focusPreset).toBeNull()
-    expect(parsed.stylePrefs.performanceMode).toBe(false)
     expect(parsed.alerts).toEqual({
       enabled: false,
       autoZoomEnabled: true,

@@ -57,13 +57,6 @@ export function InspectorPanel({
   onSetSelectedElementVisibleOnActiveSlide,
 }: InspectorPanelProps) {
   const isDeFactoBasemap = basemap.preset === 'de_facto_world'
-  const isOpenFreeMapBasemap =
-    basemap.preset === 'openfreemap_liberty' ||
-    basemap.preset === 'openfreemap_bright' ||
-    basemap.preset === 'openfreemap_positron' ||
-    basemap.preset === 'openfreemap_dark' ||
-    basemap.preset === 'openfreemap_fiord'
-
   return (
     <section className="panel-card">
       <div className="panel-header">
@@ -102,17 +95,6 @@ export function InspectorPanel({
             {hasHgmAtlas ? <option value="hgm_uydu">HGM ATLAS Uydu</option> : null}
           </select>
         </label>
-
-        {isOpenFreeMapBasemap ? (
-          <label className="switch-row">
-            <span>Performans modu</span>
-            <input
-              checked={stylePrefs.performanceMode}
-              onChange={(event) => onSetStylePref('performanceMode', event.target.checked)}
-              type="checkbox"
-            />
-          </label>
-        ) : null}
 
         {isDeFactoBasemap ? (
           <>
