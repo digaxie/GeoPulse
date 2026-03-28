@@ -61,7 +61,7 @@ export function AdminPage() {
           return
         }
 
-        setError(loadError instanceof Error ? loadError.message : 'Kullanicilar yuklenemedi.')
+      setError(loadError instanceof Error ? loadError.message : 'Kullanıcılar yüklenemedi.')
       })
       .finally(() => {
         if (active) {
@@ -111,7 +111,7 @@ export function AdminPage() {
       await refreshUsers()
     } catch (submitError) {
       setError(
-        submitError instanceof Error ? submitError.message : 'Kullanici olusturulamadi.',
+        submitError instanceof Error ? submitError.message : 'Kullanıcı oluşturulamadı.',
       )
     } finally {
       setSubmittingCreate(false)
@@ -132,7 +132,7 @@ export function AdminPage() {
       })
     } catch (rotateError) {
       setError(
-        rotateError instanceof Error ? rotateError.message : 'Sifre yenilenemedi.',
+        rotateError instanceof Error ? rotateError.message : 'Şifre yenilenemedi.',
       )
     } finally {
       setBusyUserId(null)
@@ -166,9 +166,9 @@ export function AdminPage() {
       <header className="dashboard-header">
         <div>
           <p className="eyebrow">GeoPulse Admin</p>
-          <h1>Kullanici Yonetimi</h1>
+          <h1>Kullanıcı Yönetimi</h1>
           <p className="lede">
-            Yeni hesap olusturun, rollerini guncelleyin ve ihtiyac halinde guclu sifre uretin.
+            Yeni hesap oluşturun, rollerini güncelleyin ve ihtiyaç halinde güçlü şifre üretin.
           </p>
         </div>
 
@@ -185,7 +185,7 @@ export function AdminPage() {
         <section className="status-note status-note-warning admin-password-card">
           <div>
             <p className="eyebrow">
-              {revealedPassword.reason === 'create' ? 'Yeni Sifre' : 'Rotate Edilen Sifre'}
+                {revealedPassword.reason === 'create' ? 'Yeni Şifre' : 'Yenilenen Şifre'}
             </p>
             <strong>{revealedPassword.username}</strong>
             <p className="lede admin-password-value">{revealedPassword.password}</p>
@@ -196,7 +196,7 @@ export function AdminPage() {
               onClick={() => void copyToClipboard(revealedPassword.password)}
               type="button"
             >
-              Sifreyi kopyala
+              Şifreyi kopyala
             </button>
             <button
               className="ghost-button"
@@ -207,7 +207,7 @@ export function AdminPage() {
             </button>
           </div>
           <p className="panel-empty">
-            Bu sifre yalnizca bir kez gosterilir. Mevcut access tokenlar suresi dolana kadar aktif kalabilir.
+            Bu şifre yalnızca bir kez gösterilir. Mevcut access token'lar süresi dolana kadar aktif kalabilir.
           </p>
         </section>
       ) : null}
@@ -216,14 +216,14 @@ export function AdminPage() {
         <section className="admin-card">
           <div className="admin-card-header">
             <div>
-              <p className="eyebrow">Yeni Kullanici</p>
-              <h2>Hesap olustur</h2>
+              <p className="eyebrow">Yeni Kullanıcı</p>
+              <h2>Hesap oluştur</h2>
             </div>
           </div>
 
           <form className="admin-form" onSubmit={handleCreateUser}>
             <label>
-              <span>Kullanici adi</span>
+              <span>Kullanıcı adı</span>
               <input
                 value={createUsername}
                 onChange={(event) => setCreateUsername(event.target.value)}
@@ -247,7 +247,7 @@ export function AdminPage() {
               disabled={submittingCreate}
               type="submit"
             >
-              {submittingCreate ? 'Olusturuluyor...' : 'Kullanici olustur'}
+              {submittingCreate ? 'Oluşturuluyor...' : 'Kullanıcı oluştur'}
             </button>
           </form>
         </section>
@@ -255,22 +255,22 @@ export function AdminPage() {
         <section className="admin-card admin-card-wide">
           <div className="admin-card-header">
             <div>
-              <p className="eyebrow">Kullanicilar</p>
+              <p className="eyebrow">Kullanıcılar</p>
               <h2>Liste</h2>
             </div>
-            <p className="panel-empty">{total} kayit</p>
+            <p className="panel-empty">{total} kayıt</p>
           </div>
 
           {loadingUsers ? (
-            <p className="panel-empty">Kullanicilar yukleniyor...</p>
+            <p className="panel-empty">Kullanıcılar yükleniyor...</p>
           ) : (
             <div className="admin-table-wrapper">
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Kullanici</th>
+                  <th>Kullanıcı</th>
                     <th>Rol</th>
-                    <th>Olusturma</th>
+                  <th>Oluşturma</th>
                     <th>Aksiyonlar</th>
                   </tr>
                 </thead>
@@ -298,7 +298,7 @@ export function AdminPage() {
                           onClick={() => void handleRotatePassword(user)}
                           type="button"
                         >
-                          {busyUserId === user.id ? 'Bekleniyor...' : 'Sifre rotate et'}
+                      {busyUserId === user.id ? 'Bekleniyor...' : 'Şifreyi yenile'}
                         </button>
                       </td>
                     </tr>

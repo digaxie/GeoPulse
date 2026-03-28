@@ -9,13 +9,13 @@ import { useScenarioStore } from '@/features/scenario/store'
 function getFeedStatusLabel(status: AlertFeedStatus) {
   switch (status) {
     case 'connecting':
-      return 'baglaniyor'
+      return 'bağlanıyor'
     case 'live':
-      return 'canli'
+      return 'canlı'
     case 'error':
       return 'hata'
     default:
-      return 'kapali'
+      return 'kapalı'
   }
 }
 
@@ -36,7 +36,7 @@ const BANNER_DISMISS_OPTIONS = [
 ] as const
 
 const EVENT_SOUND_DURATION_OPTIONS = [
-  { value: 'full', label: 'Tamami' },
+  { value: 'full', label: 'Tamamı' },
   ...Array.from({ length: 30 }, (_, index) => ({
     value: String(index + 1),
     label: `${index + 1} sn`,
@@ -48,9 +48,9 @@ const EVENT_SOUND_ROWS: ReadonlyArray<{
   label: string
 }> = [
   { family: 'rocket', label: 'Roket' },
-  { family: 'drone', label: 'IHA' },
-  { family: 'earlyWarning', label: 'Early warning' },
-  { family: 'incidentEnded', label: 'Incident ended' },
+  { family: 'drone', label: 'İHA' },
+  { family: 'earlyWarning', label: 'Erken uyarı' },
+  { family: 'incidentEnded', label: 'Olay sonu' },
 ]
 
 type AlertsPanelProps = {
@@ -87,7 +87,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
     <div className="alerts-panel">
       <div className="version-panel-header alerts-panel-header">
         <div>
-          <p className="eyebrow">Alarm ayarlari</p>
+          <p className="eyebrow">Alarm ayarları</p>
           <h3>Tzeva Adom</h3>
         </div>
         <button
@@ -96,14 +96,14 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
           onClick={() => setAlertsEnabled(!enabled)}
           type="button"
         >
-          {enabled ? 'Acik' : 'Kapali'}
+          {enabled ? 'Açık' : 'Kapalı'}
         </button>
       </div>
 
       <div className="alerts-status-row">
         <span className={`alerts-status-chip alerts-status-chip-${feedStatus}`}>{statusLabel}</span>
         <span className="alerts-count-badge">{alerts.length} aktif</span>
-        <span className="alerts-count-badge">{historyCount} kayit</span>
+        <span className="alerts-count-badge">{historyCount} kayıt</span>
       </div>
 
       <div className="alerts-audio-controls">
@@ -118,7 +118,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
         </label>
 
         <div className="alerts-audio-group">
-          <strong>Editor sesi</strong>
+          <strong>Editör sesi</strong>
           <label className="alerts-audio-toggle">
             <input
               checked={alertSettings.editorSoundEnabled}
@@ -126,7 +126,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
               onChange={(event) => setEditorAlertSoundEnabled(event.target.checked)}
               type="checkbox"
             />
-            <span>Acik</span>
+            <span>Açık</span>
           </label>
           <label className="alerts-volume-control">
             <span>Ses {Math.round(alertSettings.editorVolume * 100)}%</span>
@@ -151,7 +151,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
               onChange={(event) => setPresentationAlertSoundEnabled(event.target.checked)}
               type="checkbox"
             />
-            <span>Acik</span>
+            <span>Açık</span>
           </label>
           <label className="alerts-volume-control">
             <span>Ses {Math.round(alertSettings.presentationVolume * 100)}%</span>
@@ -184,7 +184,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
                     <span>{row.label}</span>
                   </label>
                   <label className="alerts-event-sound-duration">
-                    <span>Sure</span>
+                    <span>Süre</span>
                     <select
                       className="panel-input panel-select"
                       disabled={!canToggle || !enabled || !eventSound.enabled}
@@ -209,14 +209,14 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
           </div>
         </div>
 
-        <p className="alerts-audio-note">Sunum sekmesinde ilk alarm sesi icin bir kez dokunmak gerekir.</p>
+        <p className="alerts-audio-note">Sunum sekmesinde ilk alarm sesi için bir kez dokunmak gerekir.</p>
 
         <label className="alerts-volume-control">
           <span>
             Bildirimler{' '}
             {BANNER_DISMISS_OPTIONS.find((option) => option.value === alertSettings.bannerAutoDismissSec)?.label ??
               `${alertSettings.bannerAutoDismissSec} sn`}{' '}
-            sonra kapanir
+            sonra kapanır
           </span>
           <select
             className="panel-input panel-select"
@@ -237,7 +237,7 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
             Noktalar ekranda{' '}
             {ALERT_RETENTION_OPTIONS.find((option) => option.value === retentionMs)?.label ??
               `${Math.round(retentionMs / 1000)} sn`}{' '}
-            kalir
+            kalır
           </span>
           <select
             className="panel-input panel-select"
@@ -264,10 +264,10 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
       </div>
 
       {!enabled ? (
-        <p className="panel-empty">Canli alarmlari gormek icin feed'i ac.</p>
+        <p className="panel-empty">Canlı alarmları görmek için feed'i aç.</p>
       ) : (
         <p className="alerts-settings-note">
-          Canli olaylar ve son 24 saat kartlari soldaki harita drawer'inda gosterilir.
+          Canlı olaylar ve son 24 saat kartları soldaki harita drawer'ında gösterilir.
         </p>
       )}
     </div>

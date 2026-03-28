@@ -30,10 +30,10 @@ export function PresenterPage() {
   const presenterHeadline = activeSlide?.title?.trim() || title || 'GeoPulse Sunum'
   const deckStatus =
     slides.length === 0
-      ? 'Henuz briefing slaydi yok.'
+      ? 'Henüz briefing slaydı yok.'
       : activeSlide
         ? `${activeIndex + 1} / ${slides.length}`
-        : 'Sunum henuz baslatilmadi.'
+        : 'Sunum henüz başlatılmadı.'
 
   useEffect(() => {
     if (runtime.access !== 'editor' || loadingAssets || assets.length === 0) {

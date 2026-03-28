@@ -334,7 +334,16 @@ const AlertDrawerCard = memo(function AlertDrawerCard({
           <span className="alerts-card-time">{relativeTime}</span>
           <span className="alerts-card-area">{item.body}</span>
         </div>
-        <span aria-hidden="true" className={`alerts-card-icon alerts-card-icon-${item.color}`} style={iconStyle} />
+        <span
+          aria-hidden="true"
+          className={`alerts-card-icon-rail alerts-card-icon-rail-${item.color}`}
+        >
+          <span
+            aria-hidden="true"
+            className={`alerts-card-icon alerts-card-icon-${item.color}`}
+            style={iconStyle}
+          />
+        </span>
       </button>
 
       {!selected ? (

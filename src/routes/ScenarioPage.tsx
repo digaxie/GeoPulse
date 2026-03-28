@@ -33,13 +33,13 @@ import { downloadTextFile, formatRelativeDate, slugifyFileName } from '@/lib/uti
 type PanelKey = 'tools' | 'text' | 'assets' | 'missiles' | 'alerts' | 'briefing' | 'history' | 'settings' | 'share'
 
 const PANELS: { key: PanelKey; label: string }[] = [
-  { key: 'tools', label: 'Araclar' },
+  { key: 'tools', label: 'Araçlar' },
   { key: 'text', label: 'Metin' },
-  { key: 'assets', label: 'Varliklar' },
-  { key: 'missiles', label: 'Fuzeler' },
+  { key: 'assets', label: 'Varlıklar' },
+  { key: 'missiles', label: 'Füzeler' },
   { key: 'alerts', label: 'Alarmlar' },
   { key: 'briefing', label: 'Briefing' },
-  { key: 'history', label: 'Gecmis' },
+  { key: 'history', label: 'Geçmiş' },
   { key: 'settings', label: 'Ayarlar' },
   { key: 'share', label: 'Sunum' },
 ]
@@ -438,12 +438,12 @@ export function ScenarioPage() {
               className="title-edit-input"
               disabled={isReadOnly}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Senaryo adi..."
+              placeholder="Senaryo adı..."
               value={title}
             />
           </h1>
           <p className="lede">
-            {isReadOnly ? 'Bu senaryo su an salt okunur durumda.' : 'Canli editor kilidi sizde.'}
+            {isReadOnly ? 'Bu senaryo şu an salt okunur durumda.' : 'Canlı editör kilidi sizde.'}
           </p>
         </div>
 
@@ -461,7 +461,7 @@ export function ScenarioPage() {
             </span>
             <span className="theme-toggle-button-copy">
               <span className="theme-toggle-button-label">Tema</span>
-              <span className="theme-toggle-button-mode">{isDarkTheme ? 'Koyu' : 'Acik'}</span>
+              <span className="theme-toggle-button-mode">{isDarkTheme ? 'Koyu' : 'Açık'}</span>
             </span>
           </button>
           {lock ? (
@@ -478,9 +478,9 @@ export function ScenarioPage() {
         </div>
       </header>
 
-      {runtime.error ? <div className="workspace-alert">Uyari: {runtime.error}</div> : null}
+      {runtime.error ? <div className="workspace-alert">Uyarı: {runtime.error}</div> : null}
       {runtime.status === 'loading' ? (
-        <div className="workspace-alert workspace-alert-info">Yukleniyor...</div>
+        <div className="workspace-alert workspace-alert-info">Yükleniyor...</div>
       ) : null}
       {backendClient.mode === 'mock' ? (
         <div className="workspace-alert workspace-alert-warning">Demo mod</div>
@@ -531,7 +531,7 @@ export function ScenarioPage() {
           >
             {activePanel === 'tools' ? (
               <div className="sidebar-panel-inner">
-                <p className="sidebar-panel-title">Araclar</p>
+                <p className="sidebar-panel-title">Araçlar</p>
                 <ToolDock
                   activeTool={document.selectedTool}
                   canEdit={!isReadOnly}
@@ -563,7 +563,7 @@ export function ScenarioPage() {
                 <p className="sidebar-panel-title">Metin</p>
                 {selectedElement?.kind === 'text' ? (
                   <>
-                    <p className="sidebar-panel-desc">Secili metni duzenle.</p>
+                    <p className="sidebar-panel-desc">Seçili metni düzenle.</p>
                     <textarea
                       className="panel-input panel-textarea"
                       disabled={isReadOnly}
@@ -624,7 +624,7 @@ export function ScenarioPage() {
                 ) : (
                   <>
                     <p className="sidebar-panel-desc">
-                      Araclardan Metin&apos;i sec, haritada bir yere tikla ve yaz.
+                      Araçlardan Metin&apos;i seç, haritada bir yere tıkla ve yaz.
                     </p>
                     <TextControls
                       align={textDefaults.align}

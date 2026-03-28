@@ -26,9 +26,9 @@ export function ViewerPage() {
   const activeSlide = getActiveBriefingSlide(scenarioDocument)
   const visibleElementIds = getVisibleElementIdsForActiveSlide(scenarioDocument)
   const waitingForPresenter = Boolean(scenarioDocument.briefing && scenarioDocument.briefing.slides.length > 0 && !activeSlide)
-  const headline = activeSlide?.title?.trim() || title || 'Canli sunum'
+  const headline = activeSlide?.title?.trim() || title || 'Canlı sunum'
   const notes = useMemo(
-    () => (waitingForPresenter ? 'Sunum henuz baslatilmadi.' : activeSlide ? null : null),
+    () => (waitingForPresenter ? 'Sunum henüz başlatılmadı.' : activeSlide ? null : null),
     [activeSlide, waitingForPresenter],
   )
 
@@ -59,7 +59,7 @@ export function ViewerPage() {
       await document.documentElement.requestFullscreen()
     } catch (error) {
       setFullscreenError(
-        error instanceof Error ? error.message : 'Tam ekran acilamadi.',
+        error instanceof Error ? error.message : 'Tam ekran açılamadı.',
       )
     }
   }
@@ -78,7 +78,7 @@ export function ViewerPage() {
             Kontrol paneli
           </Link>
           <button className="primary-button" onClick={() => void handleFullscreen()} type="button">
-            {isFullscreen ? 'Tam ekrandan cik' : 'Tam ekran'}
+            {isFullscreen ? 'Tam ekrandan çık' : 'Tam ekran'}
           </button>
         </div>
       </header>
@@ -87,7 +87,7 @@ export function ViewerPage() {
       {assetError ? <div className="workspace-alert">{assetError}</div> : null}
       {fullscreenError ? <div className="workspace-alert">{fullscreenError}</div> : null}
       {waitingForPresenter ? (
-        <div className="workspace-alert workspace-alert-info">Sunum henuz baslatilmadi.</div>
+        <div className="workspace-alert workspace-alert-info">Sunum henüz başlatılmadı.</div>
       ) : null}
       <MapErrorBoundary>
         <ConflictMap
