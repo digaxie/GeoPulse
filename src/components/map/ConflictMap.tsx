@@ -1169,6 +1169,7 @@ export function ConflictMap({
   const alertAssetPlayPendingRef = useRef<Map<string, boolean>>(new Map())
   const alertLastAssetStartedAtRef = useRef<Map<string, number>>(new Map())
   const alertAudioStopTimerIdsRef = useRef<Map<string, number>>(new Map())
+  const alertAudioLoopUntilMsRef = useRef<Map<string, number>>(new Map())
   const alertAutoZoomMutedUntilRef = useRef(0)
   const pendingAlertAutoZoomRef = useRef<RocketAlert[]>([])
   const alertSkipSelectedFocusOnceRef = useRef(false)
@@ -1547,6 +1548,38 @@ export function ConflictMap({
     nextAudio.addEventListener('error', () => {
       markAlertAudioLoadFailure(assetPath)
     })
+    nextAudio.addEventListener('ended', () => {
+      const loopUntilMs = alertAudioLoopUntilMsRef.current.get(assetPath)
+      if (typeof loopUntilMs !== 'number' || Date.now() >= loopUntilMs) {
+        alertAudioLoopUntilMsRef.current.delete(assetPath)
+        return
+      }
+
+      if (
+        !alertsEnabledRef.current ||
+        !alertSoundEnabledRef.current ||
+        alertVolumeRef.current <= 0 ||
+        alertAudioLoadFailuresRef.current.has(assetPath)
+      ) {
+        alertAudioLoopUntilMsRef.current.delete(assetPath)
+        return
+      }
+
+      nextAudio.currentTime = 0
+      nextAudio.volume = alertVolumeRef.current
+      void nextAudio.play().catch((error: unknown) => {
+        alertAudioLoopUntilMsRef.current.delete(assetPath)
+
+        if (
+          error instanceof DOMException &&
+          (error.name === 'NotAllowedError' || error.name === 'AbortError')
+        ) {
+          return
+        }
+
+        markAlertAudioLoadFailure(assetPath, error)
+      })
+    })
 
     alertAudioPlayersRef.current.set(assetPath, nextAudio)
     return nextAudio
@@ -1564,6 +1597,7 @@ export function ConflictMap({
     (assetPath: string) => {
       clearAlertAudioStopTimer(assetPath)
       alertAssetPlayPendingRef.current.delete(assetPath)
+      alertAudioLoopUntilMsRef.current.delete(assetPath)
 
       const audio = alertAudioPlayersRef.current.get(assetPath)
       if (!audio) {
@@ -1670,8 +1704,14 @@ export function ConflictMap({
       clearAlertAudioStopTimer(assetPath)
       audio.pause()
       audio.currentTime = 0
-      audio.loop = shouldLoopAlertAudio(family)
+      audio.loop = false
       audio.volume = alertVolumeRef.current
+      const playbackDurationMs = getEffectivePlaybackDurationMs(assetPath, family)
+      if (shouldLoopAlertAudio(family)) {
+        alertAudioLoopUntilMsRef.current.set(assetPath, Date.now() + playbackDurationMs)
+      } else {
+        alertAudioLoopUntilMsRef.current.delete(assetPath)
+      }
       alertAssetPlayPendingRef.current.set(assetPath, true)
 
       void audio
@@ -1682,7 +1722,6 @@ export function ConflictMap({
           setAudioUnlockState('unlocked')
 
           if (shouldLoopAlertAudio(family)) {
-            const playbackDurationMs = getEffectivePlaybackDurationMs(assetPath, family)
             const timerId = window.setTimeout(() => {
               stopAlertAudioAsset(assetPath)
             }, playbackDurationMs)
@@ -1863,6 +1902,7 @@ export function ConflictMap({
   useEffect(() => {
     const audioPlayers = alertAudioPlayersRef.current
     const audioDurations = alertAudioDurationsRef.current
+    const loopUntilByAsset = alertAudioLoopUntilMsRef.current
     const pendingAssets = alertAssetPlayPendingRef.current
     const lastStartedAtByAsset = alertLastAssetStartedAtRef.current
     const stopTimerIds = alertAudioStopTimerIdsRef.current
@@ -1871,6 +1911,7 @@ export function ConflictMap({
       stopAllAlertAudio()
       audioPlayers.clear()
       audioDurations.clear()
+      loopUntilByAsset.clear()
       pendingAssets.clear()
       lastStartedAtByAsset.clear()
       stopTimerIds.clear()
