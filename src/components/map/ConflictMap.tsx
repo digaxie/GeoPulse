@@ -225,10 +225,7 @@ const ALERT_AUDIO_FALLBACK_DURATION_MS_BY_ASSET: Record<string, number> = {
   [EARLY_WARNING_AUDIO_ASSET_PATH]: 11_000,
 }
 
-const FIXED_ALERT_PLAYBACK_DURATION_MS_BY_FAMILY: Partial<Record<AlertEventSoundFamily, number>> = {
-  rocket: 15_000,
-  drone: 15_000,
-}
+const FIXED_ALERT_PLAYBACK_DURATION_MS_BY_FAMILY: Partial<Record<AlertEventSoundFamily, number>> = {}
 
 const landPalettes: Record<LandPalette, string[]> = {
   broadcast: [
