@@ -239,5 +239,5 @@ export function getSceneManifestEntries() {
 }
 
 export function isSceneCompatibleOpenFreeMapPreset(preset: string) {
-  return preset === 'openfreemap_liberty'
+  return preset.startsWith('openfreemap_')
 }

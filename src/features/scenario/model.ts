@@ -101,6 +101,8 @@ export const basemapPresetSchema = z.enum([
   'openfreemap_liberty',
   'openfreemap_bright',
   'openfreemap_positron',
+  'openfreemap_dark',
+  'openfreemap_fiord',
 
   'osm_standard',
   'osm_humanitarian',

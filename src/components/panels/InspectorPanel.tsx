@@ -60,7 +60,9 @@ export function InspectorPanel({
   const isOpenFreeMapBasemap =
     basemap.preset === 'openfreemap_liberty' ||
     basemap.preset === 'openfreemap_bright' ||
-    basemap.preset === 'openfreemap_positron'
+    basemap.preset === 'openfreemap_positron' ||
+    basemap.preset === 'openfreemap_dark' ||
+    basemap.preset === 'openfreemap_fiord'
 
   return (
     <section className="panel-card">
@@ -88,6 +90,8 @@ export function InspectorPanel({
             <option value="openfreemap_liberty">OpenFreeMap Liberty</option>
             <option value="openfreemap_bright">OpenFreeMap Bright</option>
             <option value="openfreemap_positron">OpenFreeMap Positron</option>
+            <option value="openfreemap_dark">OpenFreeMap Dark</option>
+            <option value="openfreemap_fiord">OpenFreeMap Fiord</option>
             <option value="osm_standard">OpenStreetMap Standard</option>
             <option value="osm_humanitarian">OpenStreetMap Humanitarian</option>
             <option value="open_topo">OpenTopoMap</option>
