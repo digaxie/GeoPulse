@@ -57,8 +57,10 @@ import {
   getAlertAudioSettingsForRole,
   getAlertSirenThrottleWindowMs,
   getSystemMessageStreamKey,
+  isAlertWithinRetention,
   isGroupedIncidentAlert,
   isIncidentStreamSystemMessage,
+  isSystemMessageWithinRetention,
   type RocketAlert,
 } from '@/features/alerts/types'
 import { AlertDrawer } from '@/features/alerts/AlertDrawer'
@@ -67,6 +69,7 @@ import {
   type DrawerCardItem,
   type DrawerCardViewModel,
 } from '@/features/alerts/alertDrawerModel'
+import { mergeAlerts } from '@/features/alerts/alertService'
 import { useAlertStore } from '@/features/alerts/useAlertStore'
 import {
   createTzevaadomFeed,
@@ -2034,6 +2037,8 @@ export function ConflictMap({
     if (publicViewerSupabase) {
       fetchTzevaadomHistory(publicViewerSupabase, 24).then(({ alerts: histAlerts, systemMessages: histMsgs, truncated }) => {
         setHistoryTruncated(truncated)
+        const now = Date.now()
+        const currentRetentionMs = useAlertStore.getState().retentionMs
         const asRocketAlerts = histAlerts.map((a) => {
           const threatLabel = getThreatLabel(a.threat)
           const enriched = a.citiesEnriched ?? []
@@ -2063,11 +2068,34 @@ export function ConflictMap({
         })
         if (asRocketAlerts.length > 0) {
           mergeAlertHistoryIntoStore(asRocketAlerts)
+          const retainedHistoryAlerts = asRocketAlerts.filter((alert) =>
+            isAlertWithinRetention(alert, currentRetentionMs, now),
+          )
+
+          if (retainedHistoryAlerts.length > 0) {
+            const currentActiveAlerts = useAlertStore.getState().alerts
+            const restoredActiveAlerts = mergeAlerts(
+              currentActiveAlerts,
+              retainedHistoryAlerts,
+              now,
+              currentRetentionMs,
+            )
+            setAlertStoreAlerts(restoredActiveAlerts, now)
+
+            for (const retainedAlert of retainedHistoryAlerts) {
+              if (isGroupedIncidentAlert(retainedAlert)) {
+                appendIncidentStreamAlert(retainedAlert.id, retainedAlert.occurredAtMs)
+              }
+            }
+          }
         }
         // System message'larÄ± (sadece incident_ended ve early_warning) ekle
         for (const msg of histMsgs) {
           if (msg.type === 'incident_ended' || msg.type === 'early_warning') {
             addSystemMessage(msg)
+            if (isSystemMessageWithinRetention(msg, currentRetentionMs, now)) {
+              appendIncidentStreamSystem(getSystemMessageStreamKey(msg), msg.receivedAtMs)
+            }
           }
         }
       }).catch(() => {

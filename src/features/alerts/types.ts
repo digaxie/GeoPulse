@@ -233,6 +233,34 @@ export function getAlertAudioSettingsForRole(
 
 import type { TzevaadomSystemMessage } from '@/features/alerts/tzevaadomService'
 
+export function isTimestampWithinRetention(
+  timestampMs: number,
+  retentionMs: number,
+  now = Date.now(),
+) {
+  return timestampMs <= now && now - timestampMs <= retentionMs
+}
+
+export function isAlertWithinRetention(
+  alert: Pick<RocketAlert, 'occurredAtMs'>,
+  retentionMs: number,
+  now = Date.now(),
+) {
+  return isTimestampWithinRetention(alert.occurredAtMs, retentionMs, now)
+}
+
+export function isSystemMessageWithinRetention(
+  message: Pick<TzevaadomSystemMessage, 'type' | 'receivedAtMs' | 'citiesEnriched'>,
+  retentionMs: number,
+  now = Date.now(),
+) {
+  return (
+    isIncidentStreamSystemMessage(message) &&
+    (message.citiesEnriched?.length ?? 0) > 0 &&
+    isTimestampWithinRetention(message.receivedAtMs, retentionMs, now)
+  )
+}
+
 export type AlertIncidentDockItem =
   | {
       key: string

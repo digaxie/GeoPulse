@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DEFAULT_SCENARIO_ALERT_SETTINGS,
+  isAlertWithinRetention,
+  isSystemMessageWithinRetention,
   formatAlertOccurredAtTr,
   formatAlertShelterInstruction,
   getAlertAudioSettingsForRole,
@@ -67,5 +69,96 @@ describe('alert presentation helpers', () => {
     expect(getAlertSirenThrottleWindowMs(800)).toBe(1000)
     expect(getAlertSirenThrottleWindowMs(1800)).toBe(1800)
     expect(getAlertSirenThrottleWindowMs(null)).toBe(1000)
+  })
+
+  it('keeps alerts active while they remain inside the retention window', () => {
+    const now = Date.parse('2026-03-28T12:00:00.000Z')
+
+    expect(
+      isAlertWithinRetention(
+        {
+          occurredAtMs: now - 90_000,
+        },
+        120_000,
+        now,
+      ),
+    ).toBe(true)
+
+    expect(
+      isAlertWithinRetention(
+        {
+          occurredAtMs: now - 121_000,
+        },
+        120_000,
+        now,
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps streamable system messages active only while they remain inside retention', () => {
+    const now = Date.parse('2026-03-28T12:00:00.000Z')
+
+    expect(
+      isSystemMessageWithinRetention(
+        {
+          type: 'early_warning',
+          receivedAtMs: now - 60_000,
+          citiesEnriched: [
+            {
+              en: 'Haifa',
+              he: '',
+              lat: 32.794,
+              lng: 34.9896,
+              zone_en: 'North',
+              countdown: 0,
+            },
+          ],
+        },
+        120_000,
+        now,
+      ),
+    ).toBe(true)
+
+    expect(
+      isSystemMessageWithinRetention(
+        {
+          type: 'early_warning',
+          receivedAtMs: now - 121_000,
+          citiesEnriched: [
+            {
+              en: 'Haifa',
+              he: '',
+              lat: 32.794,
+              lng: 34.9896,
+              zone_en: 'North',
+              countdown: 0,
+            },
+          ],
+        },
+        120_000,
+        now,
+      ),
+    ).toBe(false)
+
+    expect(
+      isSystemMessageWithinRetention(
+        {
+          type: 'unknown',
+          receivedAtMs: now - 60_000,
+          citiesEnriched: [
+            {
+              en: 'Haifa',
+              he: '',
+              lat: 32.794,
+              lng: 34.9896,
+              zone_en: 'North',
+              countdown: 0,
+            },
+          ],
+        },
+        120_000,
+        now,
+      ),
+    ).toBe(false)
   })
 })
