@@ -1597,7 +1597,7 @@ export function ConflictMap({
   const getEffectivePlaybackDurationMs = useCallback(
     (assetPath: string, family: AlertEventSoundFamily) => {
       const actualDurationMs = getKnownAlertAudioDurationMs(assetPath)
-      if (getConfiguredEventSound(family).mode === 'long') {
+      if (family !== 'earlyWarning' || getConfiguredEventSound(family).mode === 'long') {
         return actualDurationMs
       }
 
@@ -1650,7 +1650,7 @@ export function ConflictMap({
           alertLastAssetStartedAtRef.current.set(assetPath, Date.now())
           setAudioUnlockState('unlocked')
 
-          if (getConfiguredEventSound(family).mode === 'short') {
+          if (family === 'earlyWarning' && getConfiguredEventSound(family).mode === 'short') {
             const playbackDurationMs = getEffectivePlaybackDurationMs(assetPath, family)
             const timerId = window.setTimeout(() => {
               stopAlertAudioAsset(assetPath)

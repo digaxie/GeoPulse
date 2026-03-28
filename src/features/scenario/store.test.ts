@@ -48,11 +48,11 @@ describe('useScenarioStore', () => {
   it('stores event sound mode without polluting history', () => {
     const historyLength = useScenarioStore.getState().history.length
 
-    useScenarioStore.getState().setAlertEventSoundMode('rocket', 'short')
-    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.mode).toBe('short')
+    useScenarioStore.getState().setAlertEventSoundMode('earlyWarning', 'short')
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.earlyWarning.mode).toBe('short')
 
-    useScenarioStore.getState().setAlertEventSoundMode('rocket', 'long')
-    expect(useScenarioStore.getState().document.alerts!.eventSounds.rocket.mode).toBe('long')
+    useScenarioStore.getState().setAlertEventSoundMode('earlyWarning', 'long')
+    expect(useScenarioStore.getState().document.alerts!.eventSounds.earlyWarning.mode).toBe('long')
     expect(useScenarioStore.getState().history.length).toBe(historyLength)
   })
 

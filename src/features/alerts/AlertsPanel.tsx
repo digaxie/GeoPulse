@@ -43,10 +43,11 @@ const EVENT_SOUND_MODE_OPTIONS = [
 const EVENT_SOUND_ROWS: ReadonlyArray<{
   family: AlertEventSoundFamily
   label: string
+  supportsMode?: boolean
 }> = [
   { family: 'rocket', label: 'Roket' },
   { family: 'drone', label: 'İHA' },
-  { family: 'earlyWarning', label: 'Erken uyarı' },
+  { family: 'earlyWarning', label: 'Erken uyarı', supportsMode: true },
 ]
 
 type AlertsPanelProps = {
@@ -62,12 +63,16 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
   const historyAlerts = useAlertStore((state) => state.historyAlerts)
   const systemMessages = useAlertStore((state) => state.systemMessages)
 
-  const alertSettings = useScenarioStore((state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS)
+  const alertSettings = useScenarioStore(
+    (state) => state.document.alerts ?? DEFAULT_SCENARIO_ALERT_SETTINGS,
+  )
   const setAlertsEnabled = useScenarioStore((state) => state.setAlertsEnabled)
   const setAlertAutoZoomEnabled = useScenarioStore((state) => state.setAlertAutoZoomEnabled)
   const setEditorAlertSoundEnabled = useScenarioStore((state) => state.setEditorAlertSoundEnabled)
   const setEditorAlertVolume = useScenarioStore((state) => state.setEditorAlertVolume)
-  const setPresentationAlertSoundEnabled = useScenarioStore((state) => state.setPresentationAlertSoundEnabled)
+  const setPresentationAlertSoundEnabled = useScenarioStore(
+    (state) => state.setPresentationAlertSoundEnabled,
+  )
   const setPresentationAlertVolume = useScenarioStore((state) => state.setPresentationAlertVolume)
   const setAlertEventSoundEnabled = useScenarioStore((state) => state.setAlertEventSoundEnabled)
   const setAlertEventSoundMode = useScenarioStore((state) => state.setAlertEventSoundMode)
@@ -172,45 +177,54 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
                     <input
                       checked={eventSound.enabled}
                       disabled={!canToggle || !enabled}
-                      onChange={(event) => setAlertEventSoundEnabled(row.family, event.target.checked)}
+                      onChange={(event) =>
+                        setAlertEventSoundEnabled(row.family, event.target.checked)
+                      }
                       type="checkbox"
                     />
                     <span>{row.label}</span>
                   </label>
-                  <label className="alerts-event-sound-duration">
-                    <span>Çalma</span>
-                    <select
-                      className="panel-input panel-select"
-                      disabled={!canToggle || !enabled || !eventSound.enabled}
-                      onChange={(event) =>
-                        setAlertEventSoundMode(
-                          row.family,
-                          event.target.value as typeof eventSound.mode,
-                        )
-                      }
-                      value={eventSound.mode}
-                    >
-                      {EVENT_SOUND_MODE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {row.supportsMode ? (
+                    <label className="alerts-event-sound-duration">
+                      <span>Çalma</span>
+                      <select
+                        className="panel-input panel-select"
+                        disabled={!canToggle || !enabled || !eventSound.enabled}
+                        onChange={(event) =>
+                          setAlertEventSoundMode(
+                            row.family,
+                            event.target.value as typeof eventSound.mode,
+                          )
+                        }
+                        value={eventSound.mode}
+                      >
+                        {EVENT_SOUND_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
               )
             })}
           </div>
-          <p className="alerts-audio-note">Kısa mod, alarm dosyasının yaklaşık yarısını çalar.</p>
+          <p className="alerts-audio-note">
+            Kısa mod yalnız erken uyarı sesinde, alarm dosyasının yaklaşık yarısını çalar.
+          </p>
         </div>
 
-        <p className="alerts-audio-note">Sunum sekmesinde ilk alarm sesi için bir kez dokunmak gerekir.</p>
+        <p className="alerts-audio-note">
+          Sunum sekmesinde ilk alarm sesi için bir kez dokunmak gerekir.
+        </p>
 
         <label className="alerts-volume-control">
           <span>
             Bildirimler{' '}
-            {BANNER_DISMISS_OPTIONS.find((option) => option.value === alertSettings.bannerAutoDismissSec)?.label ??
-              `${alertSettings.bannerAutoDismissSec} sn`}{' '}
+            {BANNER_DISMISS_OPTIONS.find(
+              (option) => option.value === alertSettings.bannerAutoDismissSec,
+            )?.label ?? `${alertSettings.bannerAutoDismissSec} sn`}{' '}
             sonra kapanır
           </span>
           <select
@@ -259,10 +273,10 @@ export function AlertsPanel({ canToggle = true }: AlertsPanelProps) {
       </div>
 
       {!enabled ? (
-        <p className="panel-empty">Canlı alarmları görmek için feed'i aç.</p>
+        <p className="panel-empty">Canlı alarmları görmek için feed&apos;i aç.</p>
       ) : (
         <p className="alerts-settings-note">
-          Canlı olaylar ve son 24 saat kartları soldaki harita drawer'ında gösterilir.
+          Canlı olaylar ve son 24 saat kartları soldaki harita drawer&apos;ında gösterilir.
         </p>
       )}
     </div>
