@@ -1743,19 +1743,21 @@ export function ConflictMap({
 
           if (
             error instanceof DOMException &&
-            error.name !== 'NotAllowedError' &&
-            error.name !== 'AbortError'
+            (error.name === 'NotAllowedError' || error.name === 'AbortError')
           ) {
-            markAlertAudioLoadFailure(assetPath, error)
+            if (error.name === 'NotAllowedError' && alertAudioUnlockStateRef.current === 'priming') {
+              alertPendingSoundFamilyAfterUnlockRef.current = family
+              return
+            }
+
+            if (error.name === 'NotAllowedError') {
+              setAudioUnlockState('blocked')
+            }
+
             return
           }
 
-          if (alertAudioUnlockStateRef.current === 'priming') {
-            alertPendingSoundFamilyAfterUnlockRef.current = family
-            return
-          }
-
-          setAudioUnlockState('blocked')
+          markAlertAudioLoadFailure(assetPath, error)
         })
     },
     [
@@ -1871,7 +1873,10 @@ export function ConflictMap({
         continue
       }
 
-      getOrCreateAlertAudio(assetPath).load()
+      const audio = getOrCreateAlertAudio(assetPath)
+      if (audio.readyState === 0) {
+        audio.load()
+      }
     }
 
     const primeFromUserGesture = () => {
