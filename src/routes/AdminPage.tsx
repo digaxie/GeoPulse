@@ -3,9 +3,36 @@ import { Link, Navigate } from 'react-router-dom'
 
 import { SiteCredit } from '@/components/layout/SiteCredit'
 import { useAuth } from '@/features/auth/useAuth'
+import { useAppTheme } from '@/hooks/useAppTheme'
 import { backendClient } from '@/lib/backend'
+import { getSupabaseAccessToken } from '@/lib/backend/supabaseBackend'
 import type { AdminUserRecord, UserRole } from '@/lib/backend/types'
+import { appEnv } from '@/lib/env'
 import { formatRelativeDate } from '@/lib/utils'
+
+type DeckAccountStatus = {
+  label: string
+  active: boolean
+  cooldownUntil: number
+  lastError: string | null
+}
+
+type DeckServiceInfo = {
+  slug: string
+  running: boolean
+}
+
+type DeckUserStat = {
+  user_id: string
+  username: string
+  listCount: number
+}
+
+type DeckStats = {
+  twitterAccounts: DeckAccountStatus[]
+  activeServices: DeckServiceInfo[]
+  userStats: DeckUserStat[]
+} | null
 
 const PAGE_SIZE = 25
 
@@ -32,6 +59,9 @@ export function AdminPage() {
   const [submittingCreate, setSubmittingCreate] = useState(false)
   const [revealedPassword, setRevealedPassword] = useState<RevealedPassword | null>(null)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
+  const [deckStats, setDeckStats] = useState<DeckStats>(null)
+  const [deckError, setDeckError] = useState<string | null>(null)
+  const [deckLoading, setDeckLoading] = useState(true)
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total])
 
@@ -73,6 +103,32 @@ export function AdminPage() {
       active = false
     }
   }, [page, pageSize, session])
+
+  useEffect(() => {
+    if (!session || session.role !== 'admin') return
+
+    let active = true
+    setDeckLoading(true)
+    setDeckError(null)
+
+    const deckUrl = appEnv.deckLocalUrl.replace(/\/+$/u, '')
+
+    void getSupabaseAccessToken()
+      .then((token) =>
+        fetch(`${deckUrl}/api/admin/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      )
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Deck API: ${r.status}`)
+        return r.json() as Promise<NonNullable<DeckStats>>
+      })
+      .then((data) => { if (active) setDeckStats(data) })
+      .catch((e) => { if (active) setDeckError(e instanceof Error ? e.message : 'Deck bilgileri alinamadi') })
+      .finally(() => { if (active) setDeckLoading(false) })
+
+    return () => { active = false }
+  }, [session])
 
   if (!isLoading && !session) {
     return <Navigate to="/login" replace />
@@ -161,8 +217,10 @@ export function AdminPage() {
     }
   }
 
+  const { uiTheme, setUiTheme, isDarkTheme } = useAppTheme()
+
   return (
-    <main className="admin-page">
+    <main className="admin-page" data-theme={uiTheme}>
       <header className="dashboard-header">
         <div>
           <p className="eyebrow">GeoPulse Admin</p>
@@ -173,6 +231,21 @@ export function AdminPage() {
         </div>
 
         <div className="dashboard-actions">
+          <button
+            aria-pressed={isDarkTheme}
+            className={`secondary-button theme-toggle-button${isDarkTheme ? ' theme-toggle-button--active' : ''}`}
+            onClick={() => setUiTheme(isDarkTheme ? 'light' : 'dark')}
+            type="button"
+          >
+            <span aria-hidden="true" className="theme-toggle-button-track">
+              <span className="theme-toggle-button-thumb" />
+              <span className="theme-toggle-button-glow" />
+            </span>
+            <span className="theme-toggle-button-copy">
+              <span className="theme-toggle-button-label">Tema</span>
+              <span className="theme-toggle-button-mode">{isDarkTheme ? 'Koyu' : 'Açık'}</span>
+            </span>
+          </button>
           <Link className="secondary-button" to="/app">
             Senaryolara don
           </Link>
@@ -329,6 +402,136 @@ export function AdminPage() {
               Sonraki
             </button>
           </div>
+        </section>
+      </section>
+
+      <section className="admin-grid" style={{ marginTop: '2rem' }}>
+        <section className="admin-card">
+          <div className="admin-card-header">
+            <div>
+              <p className="eyebrow">GeoPulse Deck</p>
+              <h2>Twitter Hesaplari</h2>
+            </div>
+          </div>
+
+          {deckLoading ? (
+            <p className="panel-empty">Deck bilgileri yukleniyor...</p>
+          ) : deckError ? (
+            <p className="form-error">{deckError}</p>
+          ) : !deckStats ? (
+            <p className="panel-empty">Deck verisi alinamadi.</p>
+          ) : (
+            <div className="admin-table-wrapper">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Hesap</th>
+                    <th>Durum</th>
+                    <th>Son Hata</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deckStats.twitterAccounts.map((account) => (
+                    <tr key={account.label}>
+                      <td>{account.label}</td>
+                      <td>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: account.active ? '#22c55e' : '#ef4444',
+                            marginRight: 6,
+                          }}
+                        />
+                        {account.active
+                          ? 'Aktif'
+                          : `Cooldown (${Math.ceil(Math.max(0, account.cooldownUntil - Date.now()) / 1000)}s)`}
+                      </td>
+                      <td style={{ fontSize: '0.85em', opacity: 0.7 }}>
+                        {account.lastError ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="admin-card admin-card-wide">
+          <div className="admin-card-header">
+            <div>
+              <p className="eyebrow">GeoPulse Deck</p>
+              <h2>Servisler & Kullanicilar</h2>
+            </div>
+          </div>
+
+          {deckLoading ? (
+            <p className="panel-empty">Yukleniyor...</p>
+          ) : deckError ? (
+            <p className="form-error">{deckError}</p>
+          ) : !deckStats ? (
+            <p className="panel-empty">Veri yok.</p>
+          ) : (
+            <>
+              <div style={{ marginBottom: '1rem' }}>
+                <p className="eyebrow" style={{ marginBottom: '0.5rem' }}>
+                  Aktif Servisler ({deckStats.activeServices.filter((s) => s.running).length}/{deckStats.activeServices.length})
+                </p>
+                {deckStats.activeServices.length === 0 ? (
+                  <p className="panel-empty">Aktif servis yok — kullanici baglaninca baslar.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {deckStats.activeServices.map((service) => (
+                      <span
+                        key={service.slug}
+                        style={{
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '6px',
+                          fontSize: '0.85em',
+                          background: service.running
+                            ? 'rgba(34,197,94,0.15)'
+                            : 'rgba(239,68,68,0.15)',
+                          color: service.running ? '#22c55e' : '#ef4444',
+                          border: `1px solid ${service.running ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                        }}
+                      >
+                        {service.slug}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <p className="eyebrow" style={{ marginBottom: '0.5rem' }}>
+                Kullanici Liste Sayilari
+              </p>
+              {deckStats.userStats.length === 0 ? (
+                <p className="panel-empty">Henuz kullanici listesi yok.</p>
+              ) : (
+                <div className="admin-table-wrapper">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Kullanici</th>
+                        <th>Liste Sayisi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deckStats.userStats.map((stat) => (
+                        <tr key={stat.user_id}>
+                          <td>{stat.username}</td>
+                          <td>{stat.listCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </section>
       </section>
 
