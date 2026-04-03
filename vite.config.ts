@@ -46,6 +46,10 @@ export default defineConfig(({ mode }) => {
               return 'supabase'
             }
 
+            if (normalizedId.includes('/node_modules/hls.js/')) {
+              return 'hls'
+            }
+
             if (normalizedId.includes('/node_modules/zustand/')
               || normalizedId.includes('/node_modules/zod/')) {
               return 'state'
@@ -65,7 +69,7 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
       css: true,
-      exclude: [...configDefaults.exclude, '.codex-*/**'],
+      exclude: [...configDefaults.exclude, '.codex-*/**', 'twitter-canli-deneme/**'],
       coverage: {
         reporter: ['text', 'html'],
       },

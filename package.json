@@ -13,6 +13,7 @@
     "sync:map-data": "tsx --tsconfig tsconfig.app.json scripts/sync-map-data.ts",
     "sync:seed-assets": "tsx --tsconfig tsconfig.app.json scripts/sync-seed-assets.ts",
     "sync:scene-packs": "tsx --tsconfig tsconfig.app.json scripts/sync-scene-packs.ts",
+    "sync:tv": "tsx --tsconfig tsconfig.app.json scripts/sync-tv-playlists.ts",
     "verify:generated": "tsx --tsconfig tsconfig.app.json scripts/verify-generated.ts",
     "backfill:asset-snapshots": "tsx --tsconfig tsconfig.app.json scripts/backfill-uploaded-asset-snapshots.ts",
     "bootstrap:admin": "tsx --tsconfig tsconfig.app.json scripts/bootstrap-admin.ts"
@@ -21,6 +22,7 @@
     "@sentry/react": "^10.22.0",
     "@supabase/supabase-js": "^2.100.0",
     "clsx": "^2.1.1",
+    "hls.js": "^1.6.15",
     "nanoid": "^5.1.6",
     "ol": "^10.8.0",
     "ol-mapbox-style": "^13.3.0",

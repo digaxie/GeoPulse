@@ -10,6 +10,11 @@ const DashboardPage = lazy(async () => {
   return { default: module.DashboardPage }
 })
 
+const HubPage = lazy(async () => {
+  const module = await import('@/routes/HubPage')
+  return { default: module.HubPage }
+})
+
 const AdminPage = lazy(async () => {
   const module = await import('@/routes/AdminPage')
   return { default: module.AdminPage }
@@ -33,6 +38,11 @@ const PresenterPage = lazy(async () => {
 const ViewerPage = lazy(async () => {
   const module = await import('@/routes/ViewerPage')
   return { default: module.ViewerPage }
+})
+
+const TvPage = lazy(async () => {
+  const module = await import('@/routes/TvPage')
+  return { default: module.TvPage }
 })
 
 const NotFoundPage = lazy(async () => {
@@ -91,6 +101,22 @@ export function AppRouter() {
           />
           <Route
             path="/app"
+            element={
+              <ProtectedRoute>
+                <HubPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/tv"
+            element={
+              <ProtectedRoute>
+                <TvPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/scenarios"
             element={
               <ProtectedRoute>
                 <DashboardPage />
