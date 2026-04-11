@@ -376,6 +376,7 @@ export const supabaseBackend: BackendClient = {
         headers: {
           'Content-Type': 'application/json',
           apikey: appEnv.supabaseAnonKey!,
+          Authorization: `Bearer ${appEnv.supabaseAnonKey!}`,
         },
         body: JSON.stringify({ username, password }),
         signal: controller.signal,
@@ -391,8 +392,10 @@ export const supabaseBackend: BackendClient = {
     }
 
     if (!response.ok) {
-      const body = await response.json().catch(() => null)
-      throw new Error((body as { error?: string } | null)?.error || 'Giris basarisiz oldu.')
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string; message?: string }
+        | null
+      throw new Error(body?.error ?? body?.message ?? 'Giris basarisiz oldu.')
     }
 
     const data = (await response.json()) as {
