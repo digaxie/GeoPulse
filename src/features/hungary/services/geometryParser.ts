@@ -1,194 +1,145 @@
-import Feature from 'ol/Feature'
-import Polygon from 'ol/geom/Polygon'
-import { fromLonLat } from 'ol/proj'
-
 import type { HungaryGeometryRecord } from '../types'
 
-type HungaryGeometrySeed = {
+export type HungarySvgGeometryFeature = {
   id: string
-  center: [number, number] | null
-  ring: [number, number][]
+  path: string
 }
 
-const seedCache = new Map<string, HungaryGeometrySeed[]>()
-const featureCache = new Map<string, Feature<Polygon>[]>()
-const MAX_RING_POINTS = 360
-const RECORDS_PER_SLICE = 2
+export type HungarySvgGeometryBundle = {
+  version: string
+  width: number
+  height: number
+  features: HungarySvgGeometryFeature[]
+}
 
-function parseLatLonPair(value: string) {
-  const parts = value.trim().split(/\s+/u)
+type GeometryWorkerPayload = {
+  version: string
+  records: HungaryGeometryRecord[]
+}
 
-  if (parts.length < 2) {
+const memoryCache = new Map<string, HungarySvgGeometryBundle>()
+const STORAGE_KEY_PREFIX = 'hungary-svg-geometry:'
+
+function createAbortError() {
+  return new DOMException('Geometry preparation aborted', 'AbortError')
+}
+
+function isGeometryBundle(value: unknown): value is HungarySvgGeometryBundle {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.version === 'string'
+    && typeof candidate.width === 'number'
+    && typeof candidate.height === 'number'
+    && Array.isArray(candidate.features)
+  )
+}
+
+function readStoredBundle(version: string) {
+  if (typeof window === 'undefined') {
     return null
   }
 
-  const latitude = Number(parts[0])
-  const longitude = Number(parts[1])
+  try {
+    const raw = window.sessionStorage.getItem(`${STORAGE_KEY_PREFIX}${version}`)
+    if (!raw) {
+      return null
+    }
 
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    const parsed = JSON.parse(raw) as unknown
+
+    if (!isGeometryBundle(parsed)) {
+      window.sessionStorage.removeItem(`${STORAGE_KEY_PREFIX}${version}`)
+      return null
+    }
+
+    memoryCache.set(version, parsed)
+    return parsed
+  } catch {
     return null
   }
-
-  return [longitude, latitude] as [number, number]
 }
 
-function closeRingIfNeeded(ring: [number, number][]) {
-  if (ring.length === 0) {
-    return ring
+function storeBundle(bundle: HungarySvgGeometryBundle) {
+  memoryCache.set(bundle.version, bundle)
+
+  if (typeof window === 'undefined') {
+    return bundle
   }
 
-  const first = ring[0]
-  const last = ring[ring.length - 1]
-
-  if (first[0] === last[0] && first[1] === last[1]) {
-    return ring
+  try {
+    window.sessionStorage.setItem(`${STORAGE_KEY_PREFIX}${bundle.version}`, JSON.stringify(bundle))
+  } catch {
+    // Ignore quota / privacy mode failures; memory cache still helps this session.
   }
 
-  return [...ring, first]
+  return bundle
 }
 
-function downsampleRing(ring: [number, number][], maxPoints: number) {
-  if (ring.length <= maxPoints) {
-    return ring
-  }
-
-  const step = Math.max(1, Math.ceil((ring.length - 1) / (maxPoints - 1)))
-  const sampled: [number, number][] = [ring[0]]
-
-  for (let index = step; index < ring.length - 1; index += step) {
-    sampled.push(ring[index])
-  }
-
-  sampled.push(ring[ring.length - 1])
-  return sampled
+export function getCachedHungarySvgGeometry(version: string) {
+  return memoryCache.get(version) ?? readStoredBundle(version)
 }
 
-/**
- * Ramer–Douglas–Peucker line simplification.
- * Tolerance is in degrees (~0.001° ≈ 100 m — fine for a country-level map).
- */
-function simplifyRing(ring: [number, number][], tolerance: number): [number, number][] {
-  if (ring.length <= 6) return ring
-
-  const [x1, y1] = ring[0]
-  const [x2, y2] = ring[ring.length - 1]
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const lenSq = dx * dx + dy * dy
-
-  let maxDist = 0
-  let maxIdx = 0
-
-  for (let i = 1; i < ring.length - 1; i++) {
-    const [px, py] = ring[i]
-    let dist: number
-    if (lenSq === 0) {
-      dist = Math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
-    } else {
-      dist = Math.abs(dy * px - dx * py + x2 * y1 - y2 * x1) / Math.sqrt(lenSq)
-    }
-    if (dist > maxDist) {
-      maxDist = dist
-      maxIdx = i
-    }
-  }
-
-  if (maxDist > tolerance) {
-    const left = simplifyRing(ring.slice(0, maxIdx + 1), tolerance)
-    const right = simplifyRing(ring.slice(maxIdx), tolerance)
-    return [...left.slice(0, -1), ...right]
-  }
-
-  return [ring[0], ring[ring.length - 1]]
-}
-
-const SIMPLIFY_TOLERANCE = 0.0028
-
-function parsePolygonString(value: string) {
-  const raw = value
-    .split(',')
-    .map((segment) => parseLatLonPair(segment))
-    .filter((coordinate): coordinate is [number, number] => coordinate !== null)
-
-  const closed = closeRingIfNeeded(raw)
-  const sampled = downsampleRing(closed, MAX_RING_POINTS)
-  return simplifyRing(sampled, SIMPLIFY_TOLERANCE)
-}
-
-function createFeatureFromSeed(seed: HungaryGeometrySeed) {
-  return new Feature({
-    geometry: new Polygon([
-      seed.ring.map((coordinate) => fromLonLat(coordinate)),
-    ]),
-    constituencyId: seed.id,
-    centerLonLat: seed.center,
-  })
-}
-
-function yieldToMainThread() {
-  return new Promise<void>((resolve) => {
-    globalThis.setTimeout(resolve, 0)
-  })
-}
-
-export function getCachedHungaryGeometryFeatures(version: string) {
-  return featureCache.get(version) ?? null
-}
-
-export async function prepareHungaryGeometryFeatures(
+export async function prepareHungarySvgGeometry(
   version: string,
   records: HungaryGeometryRecord[],
   options: { signal?: AbortSignal } = {},
-): Promise<Feature<Polygon>[]> {
-  const cachedFeatures = featureCache.get(version)
-
-  if (cachedFeatures) {
-    return cachedFeatures
+): Promise<HungarySvgGeometryBundle> {
+  if (options.signal?.aborted) {
+    throw createAbortError()
   }
 
-  let seeds = seedCache.get(version) ?? null
+  const cached = getCachedHungarySvgGeometry(version)
 
-  if (!seeds) {
-    const nextSeeds: HungaryGeometrySeed[] = []
-
-    for (let index = 0; index < records.length; index += 1) {
-      if (options.signal?.aborted) {
-        throw new DOMException('Geometry preparation aborted', 'AbortError')
-      }
-
-      const record = records[index]
-      const ring = parsePolygonString(record.polygon)
-      if (ring.length >= 4) {
-        nextSeeds.push({
-          id: record.id,
-          center: record.center,
-          ring,
-        })
-      }
-
-      if ((index + 1) % RECORDS_PER_SLICE === 0) {
-        await yieldToMainThread()
-      }
-    }
-
-    seeds = nextSeeds
-    seedCache.set(version, seeds)
+  if (cached) {
+    return cached
   }
 
-  const features: Feature<Polygon>[] = []
-
-  for (let index = 0; index < seeds.length; index += 1) {
-    if (options.signal?.aborted) {
-      throw new DOMException('Geometry preparation aborted', 'AbortError')
-    }
-
-    features.push(createFeatureFromSeed(seeds[index]))
-
-    if ((index + 1) % RECORDS_PER_SLICE === 0) {
-      await yieldToMainThread()
-    }
+  if (typeof Worker === 'undefined') {
+    throw new Error('Web Worker destegi bu tarayicida kullanilamiyor.')
   }
 
-  featureCache.set(version, features)
-  return features
+  return await new Promise<HungarySvgGeometryBundle>((resolve, reject) => {
+    const worker = new Worker(new URL('./geometryWorker.ts', import.meta.url), { type: 'module' })
+
+    const cleanup = () => {
+      worker.onmessage = null
+      worker.onerror = null
+      options.signal?.removeEventListener('abort', abortHandler)
+      worker.terminate()
+    }
+
+    const abortHandler = () => {
+      cleanup()
+      reject(createAbortError())
+    }
+
+    worker.onmessage = (event: MessageEvent<HungarySvgGeometryBundle>) => {
+      cleanup()
+
+      if (!isGeometryBundle(event.data)) {
+        reject(new Error('Hungary geometry worker invalid response produced.'))
+        return
+      }
+
+      resolve(storeBundle(event.data))
+    }
+
+    worker.onerror = () => {
+      cleanup()
+      reject(new Error('Hungary geometry worker failed.'))
+    }
+
+    options.signal?.addEventListener('abort', abortHandler, { once: true })
+
+    const payload: GeometryWorkerPayload = {
+      version,
+      records,
+    }
+
+    worker.postMessage(payload)
+  })
 }

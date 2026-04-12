@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useRef } from 'react'
+import { startTransition, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 import { HUNGARY_CONFIG_POLL_MS, formatHungaryInteger } from '@/features/hungary/constants'
 import { CheckpointTimeline } from '@/features/hungary/components/CheckpointTimeline'
@@ -12,6 +12,7 @@ import {
   getHungaryElectionSnapshot,
   getHungaryGeometryRecords,
 } from '@/features/hungary/services/nviAdapter'
+import { getCachedHungarySvgGeometry } from '@/features/hungary/services/geometryParser'
 import { useHungaryStore } from '@/features/hungary/useHungaryStore'
 import { useAppTheme } from '@/hooks/useAppTheme'
 import '@/features/hungary/hungary.css'
@@ -28,8 +29,9 @@ export function HungaryPage() {
   const { uiTheme } = useAppTheme()
   const snapshot = useHungaryStore((state) => state.snapshot)
   const snapshotConfigVersion = snapshot?.configVersion ?? null
-  const snapshotRefreshKey = snapshot?.generatedAt ?? null
   const geometryRequestVersionRef = useRef<string | null>(null)
+  const geometryRetryTimeoutRef = useRef<number | null>(null)
+  const [geometryRetryToken, setGeometryRetryToken] = useState(0)
   const geometryVersion = useHungaryStore((state) => state.geometryVersion)
   const geometryRecords = useHungaryStore((state) => state.geometryRecords)
   const isGeometryLoading = useHungaryStore((state) => state.isGeometryLoading)
@@ -87,14 +89,17 @@ export function HungaryPage() {
       startTransition(() => {
         applyGeometry(version, records)
       })
+
+      return true
     } catch (geometryError) {
       if (signal.aborted) {
-        return
+        return false
       }
 
       markGeometryFailure()
       // Geometry can fail independently; summary cards remain usable.
       console.warn('Hungary geometry loading failed', geometryError)
+      return false
     }
   })
 
@@ -134,43 +139,63 @@ export function HungaryPage() {
   }, [runRefresh])
 
   useEffect(() => {
+    return () => {
+      if (geometryRetryTimeoutRef.current !== null) {
+        window.clearTimeout(geometryRetryTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (!snapshotConfigVersion) {
       return
     }
 
-    if (geometryRequestVersionRef.current === snapshotConfigVersion) {
+    if (getCachedHungarySvgGeometry(snapshotConfigVersion)) {
+      geometryRequestVersionRef.current = null
       return
     }
 
-    if (geometryVersion === snapshotConfigVersion && geometryRecords.length > 0) {
+    const geometryState = useHungaryStore.getState()
+
+    if (
+      geometryState.geometryVersion === snapshotConfigVersion
+      && geometryState.geometryRecords.length > 0
+    ) {
       geometryRequestVersionRef.current = null
       return
     }
 
     const controller = new AbortController()
     geometryRequestVersionRef.current = snapshotConfigVersion
-
-    const timeoutId = window.setTimeout(() => {
-      void runGeometryRefresh(snapshotConfigVersion, controller.signal).finally(() => {
-        if (controller.signal.aborted) {
-          return
-        }
-
-        if (geometryRequestVersionRef.current === snapshotConfigVersion) {
-          geometryRequestVersionRef.current = null
-        }
-      })
-    }, 0)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-      controller.abort()
+    void runGeometryRefresh(snapshotConfigVersion, controller.signal).then((didLoad) => {
+      if (controller.signal.aborted) {
+        return
+      }
 
       if (geometryRequestVersionRef.current === snapshotConfigVersion) {
         geometryRequestVersionRef.current = null
       }
+
+      if (!didLoad) {
+        geometryRetryTimeoutRef.current = window.setTimeout(() => {
+          setGeometryRetryToken((current) => current + 1)
+        }, 15_000)
+      }
+    })
+
+    return () => {
+      controller.abort()
+      if (geometryRetryTimeoutRef.current !== null) {
+        window.clearTimeout(geometryRetryTimeoutRef.current)
+        geometryRetryTimeoutRef.current = null
+      }
     }
-  }, [geometryRecords.length, geometryVersion, runGeometryRefresh, snapshotConfigVersion, snapshotRefreshKey])
+  }, [geometryRetryToken, runGeometryRefresh, snapshotConfigVersion])
+
+  const hasCachedGeometry = snapshotConfigVersion
+    ? Boolean(getCachedHungarySvgGeometry(snapshotConfigVersion))
+    : false
 
   return (
     <HungaryErrorBoundary>
@@ -194,10 +219,10 @@ export function HungaryPage() {
             <>
               <section className="hungary-grid">
                 <div className="hungary-grid-main">
-                  {geometryVersion === snapshot.configVersion && geometryRecords.length > 0 ? (
+                  {(geometryVersion === snapshot.configVersion && geometryRecords.length > 0) || hasCachedGeometry ? (
                     <HungaryMap
                       geometryRecords={geometryRecords}
-                      geometryVersion={geometryVersion}
+                      geometryVersion={snapshot.configVersion}
                       snapshot={snapshot}
                     />
                   ) : (
