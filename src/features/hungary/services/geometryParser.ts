@@ -10,7 +10,7 @@ type HungaryGeometrySeed = {
   ring: [number, number][]
 }
 
-const STORAGE_PREFIX = 'hungary-geometry:'
+const STORAGE_PREFIX = 'hungary-geometry-v2:'
 const seedCache = new Map<string, HungaryGeometrySeed[]>()
 const featureCache = new Map<string, Feature<Polygon>[]>()
 
@@ -50,13 +50,55 @@ function closeRingIfNeeded(ring: [number, number][]) {
   return [...ring, first]
 }
 
+/**
+ * Ramer–Douglas–Peucker line simplification.
+ * Tolerance is in degrees (~0.001° ≈ 100 m — fine for a country-level map).
+ */
+function simplifyRing(ring: [number, number][], tolerance: number): [number, number][] {
+  if (ring.length <= 6) return ring
+
+  const [x1, y1] = ring[0]
+  const [x2, y2] = ring[ring.length - 1]
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const lenSq = dx * dx + dy * dy
+
+  let maxDist = 0
+  let maxIdx = 0
+
+  for (let i = 1; i < ring.length - 1; i++) {
+    const [px, py] = ring[i]
+    let dist: number
+    if (lenSq === 0) {
+      dist = Math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+    } else {
+      dist = Math.abs(dy * px - dx * py + x2 * y1 - y2 * x1) / Math.sqrt(lenSq)
+    }
+    if (dist > maxDist) {
+      maxDist = dist
+      maxIdx = i
+    }
+  }
+
+  if (maxDist > tolerance) {
+    const left = simplifyRing(ring.slice(0, maxIdx + 1), tolerance)
+    const right = simplifyRing(ring.slice(maxIdx), tolerance)
+    return [...left.slice(0, -1), ...right]
+  }
+
+  return [ring[0], ring[ring.length - 1]]
+}
+
+const SIMPLIFY_TOLERANCE = 0.0012
+
 function parsePolygonString(value: string) {
-  return closeRingIfNeeded(
-    value
-      .split(',')
-      .map((segment) => parseLatLonPair(segment))
-      .filter((coordinate): coordinate is [number, number] => coordinate !== null),
-  )
+  const raw = value
+    .split(',')
+    .map((segment) => parseLatLonPair(segment))
+    .filter((coordinate): coordinate is [number, number] => coordinate !== null)
+
+  const closed = closeRingIfNeeded(raw)
+  return simplifyRing(closed, SIMPLIFY_TOLERANCE)
 }
 
 function loadSeedsFromStorage(version: string) {

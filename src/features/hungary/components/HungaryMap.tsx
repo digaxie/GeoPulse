@@ -1,8 +1,10 @@
 import { memo, useEffect, useMemo, useRef } from 'react'
 
-import type { FeatureLike } from 'ol/Feature'
+import Feature from 'ol/Feature'
+import type Polygon from 'ol/geom/Polygon'
 import { defaults as defaultControls } from 'ol/control/defaults'
 import VectorLayer from 'ol/layer/Vector'
+import VectorImageLayer from 'ol/layer/VectorImage'
 import OLMap from 'ol/Map'
 import { fromLonLat } from 'ol/proj'
 import VectorSource from 'ol/source/Vector'
@@ -24,98 +26,72 @@ type HungaryMapProps = {
   geometryRecords: HungaryGeometryRecord[]
 }
 
+/* ── style helpers ── */
+
 function withOpacity(color: string, opacity: number) {
-  const nextOpacity = Math.max(0, Math.min(1, opacity))
-
-  if (color.startsWith('rgba(')) {
-    return color.replace(/rgba\(([^)]+),\s*[\d.]+\)$/u, `rgba($1, ${nextOpacity})`)
-  }
-
-  if (color.startsWith('rgb(')) {
-    return color.replace(/^rgb\(([^)]+)\)$/u, `rgba($1, ${nextOpacity})`)
-  }
-
+  const o = Math.max(0, Math.min(1, opacity))
+  if (color.startsWith('rgba(')) return color.replace(/rgba\(([^)]+),\s*[\d.]+\)$/u, `rgba($1, ${o})`)
+  if (color.startsWith('rgb(')) return color.replace(/^rgb\(([^)]+)\)$/u, `rgba($1, ${o})`)
   if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
-    const alpha = Math.round(nextOpacity * 255)
-      .toString(16)
-      .padStart(2, '0')
-    return `${color}${alpha}`
+    return `${color}${Math.round(o * 255).toString(16).padStart(2, '0')}`
   }
-
   return color
 }
 
 const FALLBACK_FILL = 'rgba(164, 175, 193, 0.34)'
 
 function resolveFillColor(
-  constituencyById: Map<string, HungaryElectionSnapshot['constituencies'][number]>,
+  lookup: Map<string, HungaryElectionSnapshot['constituencies'][number]>,
   snapshotMode: HungaryElectionSnapshot['mode'],
   mapMode: HungaryMapMode,
-  constituencyId: string,
+  id: string,
 ) {
-  const constituency = constituencyById.get(constituencyId)
-
-  if (!constituency) {
-    return FALLBACK_FILL
-  }
-
-  if (mapMode === 'results' && snapshotMode === 'results') {
-    return getHungaryAllianceColor(constituency.leadingAlliance)
-  }
-
-  if (mapMode === 'previous') {
-    return getHungaryAllianceColor(constituency.previousResult?.winnerAlliance)
-  }
-
-  return getHungaryTurnoutColor(constituency.turnoutPct)
+  const c = lookup.get(id)
+  if (!c) return FALLBACK_FILL
+  if (mapMode === 'results' && snapshotMode === 'results') return getHungaryAllianceColor(c.leadingAlliance)
+  if (mapMode === 'previous') return getHungaryAllianceColor(c.previousResult?.winnerAlliance)
+  return getHungaryTurnoutColor(c.turnoutPct)
 }
 
-const styleCache = new Map<string, Style>()
-
-function getOrCreateStyle(fillColor: string, isSelected: boolean, isHovered: boolean) {
-  const state = isSelected ? 's' : isHovered ? 'h' : 'n'
-  const key = `${fillColor}:${state}`
-
-  const cached = styleCache.get(key)
-  if (cached) {
-    return cached
+const baseStyleCache = new Map<string, Style>()
+function getBaseStyle(fillColor: string) {
+  let s = baseStyleCache.get(fillColor)
+  if (!s) {
+    s = new Style({
+      fill: new Fill({ color: withOpacity(fillColor, 0.76) }),
+      stroke: new Stroke({ color: 'rgba(255,255,255,0.42)', width: 1.1 }),
+    })
+    baseStyleCache.set(fillColor, s)
   }
-
-  const style = new Style({
-    fill: new Fill({
-      color: withOpacity(fillColor, isSelected ? 0.92 : isHovered ? 0.84 : 0.76),
-    }),
-    stroke: new Stroke({
-      color: isSelected
-        ? '#fffaf0'
-        : isHovered
-          ? '#ffe082'
-          : 'rgba(255, 255, 255, 0.42)',
-      width: isSelected ? 2.6 : isHovered ? 2 : 1.1,
-    }),
-  })
-
-  styleCache.set(key, style)
-  return style
+  return s
 }
+
+const HOVER_STYLE = new Style({
+  fill: new Fill({ color: 'rgba(255,224,130,0.32)' }),
+  stroke: new Stroke({ color: '#ffe082', width: 2.2 }),
+})
+
+const SELECT_STYLE = new Style({
+  fill: new Fill({ color: 'rgba(255,250,240,0.36)' }),
+  stroke: new Stroke({ color: '#fffaf0', width: 2.8 }),
+})
+
+/* ── component ── */
 
 function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: HungaryMapProps) {
-  const mapElementRef = useRef<HTMLDivElement | null>(null)
+  const mapElRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<OLMap | null>(null)
-  const layerRef = useRef<VectorLayer<VectorSource> | null>(null)
-  const sourceRef = useRef<VectorSource | null>(null)
-  const hoveredConstituencyIdRef = useRef<string | null>(null)
-  const selectedConstituencyIdRef = useRef<string | null>(null)
-  const mapModeRef = useRef<HungaryMapMode>('turnout')
-  const snapshotModeRef = useRef(snapshot.mode)
-  const constituencyByIdRef = useRef<Map<string, HungaryElectionSnapshot['constituencies'][number]>>(new Map())
+  const baseLayerRef = useRef<VectorImageLayer<VectorSource> | null>(null)
+  const baseSourceRef = useRef<VectorSource | null>(null)
+  const hlSourceRef = useRef<VectorSource | null>(null)
+  const featuresById = useRef<Map<string, Feature<Polygon>>>(new Map())
 
-  const mapMode = useHungaryStore((state) => state.mapMode)
-  const hoveredConstituencyId = useHungaryStore((state) => state.hoveredConstituencyId)
-  const selectedConstituencyId = useHungaryStore((state) => state.selectedConstituencyId)
-  const hoverConstituency = useHungaryStore((state) => state.hoverConstituency)
-  const selectConstituency = useHungaryStore((state) => state.selectConstituency)
-  const setMapMode = useHungaryStore((state) => state.setMapMode)
+  const mapMode = useHungaryStore((s) => s.mapMode)
+  const hoveredId = useHungaryStore((s) => s.hoveredConstituencyId)
+  const selectedId = useHungaryStore((s) => s.selectedConstituencyId)
+  const hoverConstituency = useHungaryStore((s) => s.hoverConstituency)
+  const selectConstituency = useHungaryStore((s) => s.selectConstituency)
+  const setMapMode = useHungaryStore((s) => s.setMapMode)
 
   const features = useMemo(
     () => buildHungaryGeometryFeatures(geometryVersion, geometryRecords),
@@ -123,72 +99,33 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
   )
 
   const constituencyById = useMemo(() => {
-    const map = new Map<string, HungaryElectionSnapshot['constituencies'][number]>()
-    for (const c of snapshot.constituencies) {
-      map.set(c.id, c)
-    }
-    return map
+    const m = new Map<string, HungaryElectionSnapshot['constituencies'][number]>()
+    for (const c of snapshot.constituencies) m.set(c.id, c)
+    return m
   }, [snapshot.constituencies])
 
+  /* ── build map once ── */
   useEffect(() => {
-    constituencyByIdRef.current = constituencyById
-    snapshotModeRef.current = snapshot.mode
-  }, [constituencyById, snapshot.mode])
+    if (!mapElRef.current || mapRef.current) return
 
-  useEffect(() => {
-    const prevHover = hoveredConstituencyIdRef.current
-    const prevSelect = selectedConstituencyIdRef.current
-    const prevMode = mapModeRef.current
+    const baseSource = new VectorSource()
+    const hlSource = new VectorSource()
 
-    hoveredConstituencyIdRef.current = hoveredConstituencyId
-    selectedConstituencyIdRef.current = selectedConstituencyId
-    mapModeRef.current = mapMode
+    const baseLayer = new VectorImageLayer({
+      source: baseSource,
+      style: () => new Style(), // placeholder, overridden by applyBaseStyles
+    })
 
-    if (
-      prevHover !== hoveredConstituencyId
-      || prevSelect !== selectedConstituencyId
-      || prevMode !== mapMode
-    ) {
-      layerRef.current?.changed()
-    }
-  }, [hoveredConstituencyId, mapMode, selectedConstituencyId])
-
-  useEffect(() => {
-    layerRef.current?.changed()
-  }, [constituencyById])
-
-  useEffect(() => {
-    if (!mapElementRef.current || mapRef.current) {
-      return
-    }
-
-    const source = new VectorSource()
-    const layer = new VectorLayer({
-      source,
+    const hlLayer = new VectorLayer({
+      source: hlSource,
       updateWhileAnimating: true,
       updateWhileInteracting: true,
-      style: (feature: FeatureLike) => {
-        const constituencyId = String(feature.get('constituencyId') ?? '')
-        const fillColor = resolveFillColor(
-          constituencyByIdRef.current,
-          snapshotModeRef.current,
-          mapModeRef.current,
-          constituencyId,
-        )
-        const isSelected = constituencyId === selectedConstituencyIdRef.current
-        const isHovered = constituencyId === hoveredConstituencyIdRef.current
-
-        return getOrCreateStyle(fillColor, isSelected, isHovered)
-      },
     })
 
     const map = new OLMap({
-      target: mapElementRef.current,
-      controls: defaultControls({
-        attribution: false,
-        rotate: false,
-      }),
-      layers: [layer],
+      target: mapElRef.current,
+      controls: defaultControls({ attribution: false, rotate: false }),
+      layers: [baseLayer, hlLayer],
       view: new View({
         center: fromLonLat([19.25, 47.18]),
         zoom: 7.2,
@@ -197,98 +134,108 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
       }),
     })
 
-    let lastHoveredId: string | null = null
+    let lastHit: string | null = null
 
-    map.on('pointermove', (event) => {
-      if (event.dragging) {
-        return
-      }
-
-      let nextHoveredId: string | null = null
-
-      map.forEachFeatureAtPixel(
-        event.pixel,
-        (feature, featureLayer) => {
-          if (featureLayer === layer) {
-            nextHoveredId = String(feature.get('constituencyId') ?? '')
-            return feature
-          }
-
-          return undefined
-        },
-        { hitTolerance: 3 },
-      )
-
-      if (nextHoveredId !== lastHoveredId) {
-        lastHoveredId = nextHoveredId
-        hoverConstituency(nextHoveredId)
-        map.getViewport().style.cursor = nextHoveredId ? 'pointer' : ''
+    map.on('pointermove', (e) => {
+      if (e.dragging) return
+      let hit: string | null = null
+      map.forEachFeatureAtPixel(e.pixel, (f, l) => {
+        if (l === baseLayer || l === hlLayer) {
+          hit = String(f.get('constituencyId') ?? '')
+          return f
+        }
+        return undefined
+      }, { hitTolerance: 4 })
+      if (hit !== lastHit) {
+        lastHit = hit
+        hoverConstituency(hit)
+        map.getViewport().style.cursor = hit ? 'pointer' : ''
       }
     })
 
-    map.on('click', (event) => {
-      let nextSelectedId: string | null = null
-
-      map.forEachFeatureAtPixel(
-        event.pixel,
-        (feature, featureLayer) => {
-          if (featureLayer === layer) {
-            nextSelectedId = String(feature.get('constituencyId') ?? '')
-            return feature
-          }
-
-          return undefined
-        },
-        { hitTolerance: 3 },
-      )
-
-      selectConstituency(nextSelectedId)
+    map.on('click', (e) => {
+      let hit: string | null = null
+      map.forEachFeatureAtPixel(e.pixel, (f, l) => {
+        if (l === baseLayer || l === hlLayer) {
+          hit = String(f.get('constituencyId') ?? '')
+          return f
+        }
+        return undefined
+      }, { hitTolerance: 4 })
+      selectConstituency(hit)
     })
 
-    const handleMouseLeave = () => {
-      lastHoveredId = null
-      hoverConstituency(null)
-      map.getViewport().style.cursor = ''
-    }
+    const onLeave = () => { lastHit = null; hoverConstituency(null); map.getViewport().style.cursor = '' }
+    const onResize = () => map.updateSize()
+    map.getViewport().addEventListener('mouseleave', onLeave)
+    window.addEventListener('resize', onResize)
 
-    const handleResize = () => map.updateSize()
-
-    map.getViewport().addEventListener('mouseleave', handleMouseLeave)
-    window.addEventListener('resize', handleResize)
-
-    sourceRef.current = source
-    layerRef.current = layer
+    baseSourceRef.current = baseSource
+    hlSourceRef.current = hlSource
+    baseLayerRef.current = baseLayer
     mapRef.current = map
 
     return () => {
-      map.getViewport().removeEventListener('mouseleave', handleMouseLeave)
-      window.removeEventListener('resize', handleResize)
+      map.getViewport().removeEventListener('mouseleave', onLeave)
+      window.removeEventListener('resize', onResize)
       map.setTarget(undefined)
-      sourceRef.current = null
-      layerRef.current = null
+      baseSourceRef.current = null
+      hlSourceRef.current = null
+      baseLayerRef.current = null
       mapRef.current = null
     }
   }, [hoverConstituency, selectConstituency])
 
+  /* ── load features ── */
   useEffect(() => {
-    if (!sourceRef.current || !mapRef.current) {
-      return
+    const src = baseSourceRef.current
+    const m = mapRef.current
+    if (!src || !m) return
+
+    src.clear(true)
+    const lookup = new Map<string, Feature<Polygon>>()
+    for (const f of features) {
+      lookup.set(String(f.get('constituencyId') ?? ''), f)
     }
+    featuresById.current = lookup
+    src.addFeatures(features)
 
-    sourceRef.current.clear(true)
-    sourceRef.current.addFeatures(features)
-
-    const extent = sourceRef.current.getExtent()
-    if (extent.some((value) => !Number.isFinite(value))) {
-      return
+    const ext = src.getExtent()
+    if (ext && ext.every((v) => Number.isFinite(v))) {
+      m.getView().fit(ext, { padding: [24, 24, 24, 24], maxZoom: 8.85, duration: 0 })
     }
+  }, [features])
 
-    mapRef.current.getView().fit(extent, {
-      padding: [24, 24, 24, 24],
-      maxZoom: 8.85,
-      duration: 0,
-    })
-  }, [features, geometryVersion])
+  /* ── apply base styles (when data or mapMode changes) ── */
+  useEffect(() => {
+    for (const [id, f] of featuresById.current) {
+      const color = resolveFillColor(constituencyById, snapshot.mode, mapMode, id)
+      f.setStyle(getBaseStyle(color))
+    }
+  }, [constituencyById, snapshot.mode, mapMode])
+
+  /* ── highlight overlay (hover / selection) ── */
+  useEffect(() => {
+    const hl = hlSourceRef.current
+    if (!hl) return
+
+    hl.clear(true)
+
+    const ids = new Set<string>()
+    if (selectedId) ids.add(selectedId)
+    if (hoveredId && hoveredId !== selectedId) ids.add(hoveredId)
+
+    for (const id of ids) {
+      const orig = featuresById.current.get(id)
+      if (!orig) continue
+      const geom = orig.getGeometry()
+      if (!geom) continue
+
+      const clone = new Feature({ geometry: geom, constituencyId: id })
+      clone.setStyle(id === selectedId ? SELECT_STYLE : HOVER_STYLE)
+      hl.addFeature(clone)
+    }
+  }, [hoveredId, selectedId])
 
   const resultModeDisabled = snapshot.mode !== 'results'
 
@@ -315,7 +262,7 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
       </div>
 
       <div className="hungary-map-shell">
-        <div className="hungary-map-canvas" ref={mapElementRef} />
+        <div className="hungary-map-canvas" ref={mapElRef} />
         <div className="hungary-map-overlay">
           <span>
             {mapMode === 'turnout'
