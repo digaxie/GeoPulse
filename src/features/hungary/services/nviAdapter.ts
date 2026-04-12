@@ -1186,29 +1186,29 @@ export async function getHungaryElectionSnapshot(
   options: { signal?: AbortSignal } = {},
 ): Promise<HungarySnapshotBundle> {
   const { config, sourceMode: configSourceMode } = await getConfig(options.signal)
-  const { data: staticData, sourceMode: staticSourceMode } = await getStaticBundle(
-    config.ver,
-    configSourceMode,
-    options.signal,
-  )
   const mode: HungaryDataMode = config.szavossz ? 'results' : 'turnout'
-  const { data: turnoutData, sourceMode: turnoutSourceMode } = await getTurnoutBundle(
-    config.napkozi,
-    staticSourceMode,
-    mode,
-    options.signal,
-  )
+
+  const [staticResponse, turnoutResponse] = await Promise.all([
+    getStaticBundle(config.ver, configSourceMode, options.signal),
+    getTurnoutBundle(config.napkozi, configSourceMode, mode, options.signal),
+  ])
+
+  const staticData = staticResponse.data
+  const turnoutData = turnoutResponse.data
 
   let resultsData: ResultsBundle | null = null
-  let finalSourceMode: HungarySourceMode =
-    configSourceMode === 'proxy' || staticSourceMode === 'proxy' || turnoutSourceMode === 'proxy'
-      ? 'proxy'
-      : 'direct'
+  const anyProxy =
+    configSourceMode === 'proxy'
+    || staticResponse.sourceMode === 'proxy'
+    || turnoutResponse.sourceMode === 'proxy'
+  let finalSourceMode: HungarySourceMode = anyProxy ? 'proxy' : 'direct'
 
   if (config.szavossz) {
-    const resultsResponse = await getResultsBundle(config.szavossz, turnoutSourceMode, options.signal)
+    const resultsResponse = await getResultsBundle(config.szavossz, finalSourceMode, options.signal)
     resultsData = resultsResponse.data
-    finalSourceMode = resultsResponse.sourceMode
+    if (resultsResponse.sourceMode === 'proxy') {
+      finalSourceMode = 'proxy'
+    }
   }
 
   return {
