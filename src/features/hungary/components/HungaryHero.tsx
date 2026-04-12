@@ -124,12 +124,12 @@ export const HungaryHero = memo(function HungaryHero({ snapshot, isRefreshing, i
         <div className="hungary-stat-card">
           <span className="hungary-stat-label">Liste gecerli oy</span>
           <strong className="hungary-stat-value">
-            {snapshot?.national.listValidVotes !== null
+            {snapshot && snapshot.national.listValidVotes !== null
               ? formatHungaryInteger(snapshot.national.listValidVotes)
               : '--'}
           </strong>
           <span className="hungary-stat-hint">
-            {snapshot?.national.listValidVotesPct !== null
+            {snapshot && snapshot.national.listValidVotesPct !== null
               ? formatHungaryPercent(snapshot.national.listValidVotesPct, 2)
               : 'Sonuc modu acildiginda dolacak'}
           </span>
