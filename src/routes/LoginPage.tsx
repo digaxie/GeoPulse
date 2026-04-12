@@ -30,7 +30,7 @@ export function LoginPage() {
       navigate('/app')
     } catch (submitError) {
       setError(
-        submitError instanceof Error ? submitError.message : 'Giriş sırasında hata oluştu.',
+        submitError instanceof Error ? submitError.message : 'Giriş sırasında bir hata oluştu.',
       )
     } finally {
       setSubmitting(false)
@@ -43,97 +43,129 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-hero">
-        <div className="auth-hero-visual">
+    <main className="modern-auth-layout">
+      {/* Left part: Hero Visual */}
+      <section className="modern-auth-hero">
+        <div className="hero-background-wrapper">
           <img
-            alt="GeoPulse harita arayüzü görseli"
-            className="auth-hero-image"
-            src={withBasePath('/geopulse-login-hero.svg')}
+            alt="GeoPulse Command Center Background"
+            className="hero-background-image"
+            src={withBasePath('/geopulse-login-hero-modern.png')}
           />
+          <div className="hero-background-overlay"></div>
         </div>
 
-        <div className="auth-hero-copy">
-          <p className="eyebrow">GeoPulse</p>
-          <h1>Canlı gündem ve jeopolitik yayınlar için harita masası.</h1>
-          <p className="lede">
-            Senaryoları yönetin, sembolleri yerleştirin ve canlı sunum bağlantısıyla aynı harita
-            üzerinden briefing akışını yönetin.
-          </p>
-
-          <div className="auth-hero-tags">
-            <span className="auth-hero-tag">Canlı senaryo yönetimi</span>
-            <span className="auth-hero-tag">Harita üstü briefing</span>
-            <span className="auth-hero-tag">Anlık viewer senkronu</span>
+        <div className="hero-content">
+          <div className="brand-header">
+            <ModeBadge className="modern-mode-badge" />
           </div>
-        </div>
 
-        <ModeBadge />
-
-        {isDemoMode ? (
-          <div className="status-note status-note-warning">
-            Bu yayın şu an demo modunda. Giriş ve senaryolar bu cihazdaki tarayıcı hafızasında
-            çalışır; cihaz değişikliği için JSON dışa aktar kullanın.
-          </div>
-        ) : null}
-      </section>
-
-      <section className="auth-card">
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="auth-form-heading">
-            <p className="eyebrow">GeoPulse Access</p>
-            <h2>Kontrol merkezine giriş yapın</h2>
-            <p className="lede">
-              Editör, senaryo yönetimi ve canlı sunum akışına tek noktadan erişin.
+          <div className="hero-text-content">
+            <p className="hero-eyebrow">GeoPulse Tactical System</p>
+            <h1 className="hero-title">
+              Strategic Control<br />
+              <span className="text-glow">Intelligence.</span>
+            </h1>
+            <p className="hero-subtitle">
+              Unified command center operations. Briefing, scenarios, and live deck management synchronized in real-time.
             </p>
           </div>
 
-          <label>
-            <span>Kullanıcı adı</span>
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="admin"
-            />
-          </label>
-
-          <label>
-            <span>Şifre</span>
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="********"
-              type="password"
-            />
-          </label>
-
-          {isDemoMode ? (
-            <p className="panel-empty">
-              Demo modunda herhangi bir kullanıcı adı ve şifre kullanabilirsiniz.
-            </p>
-          ) : null}
-
-          {error ? <p className="form-error">{error}</p> : null}
-
-          <div className="button-row">
-            <button className="primary-button" disabled={submitting || isLoading} type="submit">
-              {submitting ? 'Bağlanılıyor...' : 'Editör paneline gir'}
-            </button>
-            {isDemoMode ? (
-              <button
-                className="secondary-button"
-                disabled={submitting || isLoading}
-                onClick={fillDemoCredentials}
-                type="button"
-              >
-                Demo bilgilerini doldur
-              </button>
-            ) : null}
+          <div className="hero-stats">
+            <div className="stat-card">
+              <div className="stat-icon-wrapper">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">Live Sync</span>
+                <span className="stat-label">Sub-second latency</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon-wrapper">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">Global Watch</span>
+                <span className="stat-label">Coverage Map</span>
+              </div>
+            </div>
           </div>
-        </form>
+        </div>
       </section>
 
-      <SiteCredit className="auth-page-footer" />
+      {/* Right part: Form */}
+      <section className="modern-auth-form-container">
+        <div className="form-wrapper">
+          <div className="form-header">
+            <div className="logo-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </div>
+            <h2>Access Portal</h2>
+            <p>Enter your credentials to connect to the tactical network.</p>
+          </div>
+
+          <form className="modern-form" onSubmit={handleSubmit}>
+            <div className="input-group">
+               <label htmlFor="username">Operator ID</label>
+               <div className="input-with-icon">
+                 <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                 <input
+                   id="username"
+                   autoComplete="username"
+                   value={username}
+                   onChange={(event) => setUsername(event.target.value)}
+                   placeholder="admin"
+                 />
+               </div>
+            </div>
+
+            <div className="input-group">
+               <label htmlFor="password">Passkey</label>
+               <div className="input-with-icon">
+                 <svg className="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                 <input
+                   id="password"
+                   autoComplete="current-password"
+                   value={password}
+                   onChange={(event) => setPassword(event.target.value)}
+                   placeholder="••••••••"
+                   type="password"
+                 />
+               </div>
+            </div>
+
+            {error && <div className="form-error-toast">{error}</div>}
+
+            <div className="form-actions">
+               <button 
+                 className="modern-submit-btn" 
+                 disabled={submitting || isLoading} 
+                 type="submit"
+               >
+                 <span>{submitting ? 'Authenticating...' : 'Initialize Uplink'}</span>
+                 <div className="btn-glow"></div>
+               </button>
+            </div>
+
+            {isDemoMode && (
+              <div className="demo-actions">
+                <p className="demo-hint">Demo mode active. Use preconfigured credentials.</p>
+                <button
+                  className="modern-demo-btn"
+                  disabled={submitting || isLoading}
+                  onClick={fillDemoCredentials}
+                  type="button"
+                >
+                  Load Demo Profile
+                </button>
+              </div>
+            )}
+          </form>
+
+          <SiteCredit className="modern-footer-credit" />
+        </div>
+      </section>
     </main>
   )
 }

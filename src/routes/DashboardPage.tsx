@@ -3,11 +3,14 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import { ModeBadge } from '@/components/layout/ModeBadge'
 import { SiteCredit } from '@/components/layout/SiteCredit'
+import { beginDeckLogout } from '@/features/auth/deckLogout'
 import { useAuth } from '@/features/auth/useAuth'
+import { useAppTheme } from '@/hooks/useAppTheme'
 import { migrateScenarioDocument } from '@/features/scenario/migrate'
 import { parseScenarioTransfer } from '@/features/scenario/transfer'
 import { backendClient } from '@/lib/backend'
 import type { ScenarioListItem, ScenarioLock } from '@/lib/backend/types'
+import { appEnv } from '@/lib/env'
 import { withBasePath } from '@/lib/paths'
 import { formatRelativeDate, readTextFile } from '@/lib/utils'
 
@@ -27,6 +30,7 @@ function getActiveScenarioLock(lock: ScenarioLock | null, nowMs: number) {
 export function DashboardPage() {
   const navigate = useNavigate()
   const { session, isLoading, logout } = useAuth()
+  const { uiTheme, setUiTheme, isDarkTheme } = useAppTheme()
   const [scenarios, setScenarios] = useState<ScenarioListItem[]>([])
   const [loadingScenarios, setLoadingScenarios] = useState(true)
   const [deletingScenarioId, setDeletingScenarioId] = useState<string | null>(null)
@@ -139,12 +143,26 @@ export function DashboardPage() {
     }
   }
 
+  async function handleLogout() {
+    const deckLogoutPopup = beginDeckLogout()
+
+    try {
+      await logout()
+    } finally {
+      window.setTimeout(() => {
+        if (deckLogoutPopup && !deckLogoutPopup.closed) {
+          deckLogoutPopup.close()
+        }
+      }, 2_000)
+    }
+  }
+
   return (
-    <main className="dashboard-page">
+    <main className="dashboard-page" data-theme={uiTheme}>
       <header className="dashboard-header">
         <div>
           <p className="eyebrow">GeoPulse Kontrol Merkezi</p>
-          <h1>Senaryolar</h1>
+          <h1>Senaryo kutuphanesi</h1>
           <p className="lede">
             Editör modu tek kullanıcı için kilitlenir. İzleyiciler public read-only link ile
             canlı güncellemeleri görür.
@@ -152,13 +170,33 @@ export function DashboardPage() {
         </div>
 
         <div className="dashboard-actions">
+          <button
+            aria-pressed={isDarkTheme}
+            className={`secondary-button theme-toggle-button${isDarkTheme ? ' theme-toggle-button--active' : ''}`}
+            onClick={() => setUiTheme(isDarkTheme ? 'light' : 'dark')}
+            type="button"
+          >
+            <span aria-hidden="true" className="theme-toggle-button-track">
+              <span className="theme-toggle-button-thumb" />
+              <span className="theme-toggle-button-glow" />
+            </span>
+            <span className="theme-toggle-button-copy">
+              <span className="theme-toggle-button-label">Tema</span>
+              <span className="theme-toggle-button-mode">{isDarkTheme ? 'Koyu' : 'Açık'}</span>
+            </span>
+          </button>
           <ModeBadge />
+          {appEnv.enableLocalHub ? (
+            <Link className="secondary-button" to="/app">
+              Hub
+            </Link>
+          ) : null}
           {session?.role === 'admin' ? (
             <Link className="secondary-button" to="/admin">
               Admin
             </Link>
           ) : null}
-          <button className="ghost-button" onClick={() => void logout()}>
+          <button className="ghost-button" onClick={() => void handleLogout()}>
             Çıkış
           </button>
           <button
