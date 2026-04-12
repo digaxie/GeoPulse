@@ -10,13 +10,8 @@ type HungaryGeometrySeed = {
   ring: [number, number][]
 }
 
-const STORAGE_PREFIX = 'hungary-geometry-v2:'
 const seedCache = new Map<string, HungaryGeometrySeed[]>()
 const featureCache = new Map<string, Feature<Polygon>[]>()
-
-function isBrowser() {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
-}
 
 function parseLatLonPair(value: string) {
   const parts = value.trim().split(/\s+/u)
@@ -101,53 +96,11 @@ function parsePolygonString(value: string) {
   return simplifyRing(closed, SIMPLIFY_TOLERANCE)
 }
 
-function loadSeedsFromStorage(version: string) {
-  if (!isBrowser()) {
-    return null
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(`${STORAGE_PREFIX}${version}`)
-
-    if (!rawValue) {
-      return null
-    }
-
-    const parsed = JSON.parse(rawValue) as HungaryGeometrySeed[]
-
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return null
-    }
-
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function saveSeedsToStorage(version: string, seeds: HungaryGeometrySeed[]) {
-  if (!isBrowser()) {
-    return
-  }
-
-  try {
-    window.localStorage.setItem(`${STORAGE_PREFIX}${version}`, JSON.stringify(seeds))
-  } catch {
-    // Best effort only.
-  }
-}
-
 function buildGeometrySeeds(version: string, records: HungaryGeometryRecord[]) {
   const cachedSeeds = seedCache.get(version)
 
   if (cachedSeeds) {
     return cachedSeeds
-  }
-
-  const storageSeeds = loadSeedsFromStorage(version)
-  if (storageSeeds) {
-    seedCache.set(version, storageSeeds)
-    return storageSeeds
   }
 
   const seeds = records
@@ -159,7 +112,6 @@ function buildGeometrySeeds(version: string, records: HungaryGeometryRecord[]) {
     .filter((seed) => seed.ring.length >= 4)
 
   seedCache.set(version, seeds)
-  saveSeedsToStorage(version, seeds)
   return seeds
 }
 

@@ -221,7 +221,6 @@ type StaticBundle = {
   candidateById: Map<number, CandidateBase>
   listsById: Map<number, ListBase>
   constituencies: ConstituencyBase[]
-  geometryRecords: HungaryGeometryRecord[]
 }
 
 type TurnoutBundle = {
@@ -244,6 +243,7 @@ type ResultsBundle = {
 let sourceModePromise: Promise<HungarySourceMode> | null = null
 let configCache: { fetchedAt: number; value: ConfigPayload } | null = null
 let staticCache: { version: string; data: StaticBundle } | null = null
+let geometryCache: { version: string; data: HungaryGeometryRecord[] } | null = null
 let turnoutCache: { version: string; fetchedAt: number; data: TurnoutBundle } | null = null
 let resultsCache: { version: string; fetchedAt: number; data: ResultsBundle } | null = null
 
@@ -508,14 +508,12 @@ async function getStaticBundle(version: string, sourceMode: HungarySourceMode, s
 
   const [
     constituencyMetaResponse,
-    polygonResponse,
     listResponse,
     individualCandidateResponse,
     previousResultResponse,
     codeResponse,
   ] = await Promise.all([
     fetchHungaryJson<RawPayload<RawConstituencyMeta>>(`${version}/ver/OevkAdatok.json`, sourceMode, signal),
-    fetchHungaryJson<RawPayload<RawPolygonMeta>>(`${version}/ver/OevkPoligonok.json`, sourceMode, signal),
     fetchHungaryJson<RawPayload<RawListRow>>(`${version}/ver/ListakEsJeloltek.json`, sourceMode, signal),
     fetchHungaryJson<RawPayload<RawIndividualCandidate>>(
       `${version}/ver/EgyeniJeloltek.json`,
@@ -532,7 +530,6 @@ async function getStaticBundle(version: string, sourceMode: HungarySourceMode, s
 
   const effectiveSourceMode = [
     constituencyMetaResponse.sourceMode,
-    polygonResponse.sourceMode,
     listResponse.sourceMode,
     individualCandidateResponse.sourceMode,
     previousResultResponse.sourceMode,
@@ -609,17 +606,6 @@ async function getStaticBundle(version: string, sourceMode: HungarySourceMode, s
     })
   }
 
-  const geometryById = new Map(
-    (polygonResponse.data.list ?? []).map((record) => [
-      toConstituencyId(record.maz, record.evk),
-      {
-        id: toConstituencyId(record.maz, record.evk),
-        center: parseCenter(record.centrum),
-        polygon: record.poligon,
-      } satisfies HungaryGeometryRecord,
-    ]),
-  )
-
   const constituencies: ConstituencyBase[] = (constituencyMetaResponse.data.list ?? []).map((entry) => {
     const id = toConstituencyId(entry.maz, entry.evk)
 
@@ -643,7 +629,6 @@ async function getStaticBundle(version: string, sourceMode: HungarySourceMode, s
   const staticBundle: StaticBundle = {
     generatedAt: pickLatestTimestamp([
       readGeneratedAt(constituencyMetaResponse.data),
-      readGeneratedAt(polygonResponse.data),
       readGeneratedAt(listResponse.data),
       readGeneratedAt(individualCandidateResponse.data),
       readGeneratedAt(previousResultResponse.data),
@@ -654,9 +639,6 @@ async function getStaticBundle(version: string, sourceMode: HungarySourceMode, s
     candidateById,
     listsById,
     constituencies,
-    geometryRecords: constituencies
-      .map((constituency) => geometryById.get(constituency.id))
-      .filter((record): record is HungaryGeometryRecord => Boolean(record)),
   }
 
   staticCache = {
@@ -667,6 +649,37 @@ async function getStaticBundle(version: string, sourceMode: HungarySourceMode, s
   return {
     data: staticBundle,
     sourceMode: effectiveSourceMode,
+  }
+}
+
+async function getGeometryBundle(version: string, sourceMode: HungarySourceMode, signal?: AbortSignal) {
+  if (geometryCache?.version === version) {
+    return {
+      data: geometryCache.data,
+      sourceMode,
+    }
+  }
+
+  const polygonResponse = await fetchHungaryJson<RawPayload<RawPolygonMeta>>(
+    `${version}/ver/OevkPoligonok.json`,
+    sourceMode,
+    signal,
+  )
+
+  const geometryRecords = (polygonResponse.data.list ?? []).map((record) => ({
+    id: toConstituencyId(record.maz, record.evk),
+    center: parseCenter(record.centrum),
+    polygon: record.poligon,
+  }))
+
+  geometryCache = {
+    version,
+    data: geometryRecords,
+  }
+
+  return {
+    data: geometryRecords,
+    sourceMode: polygonResponse.sourceMode,
   }
 }
 
@@ -1220,7 +1233,16 @@ export async function getHungaryElectionSnapshot(
       resultsData,
     }),
     geometryVersion: config.ver,
-    geometryRecords: staticData.geometryRecords,
+    geometryRecords: geometryCache?.version === config.ver ? geometryCache.data : [],
     pollIntervalMs: mode === 'results' ? HUNGARY_RESULTS_POLL_MS : HUNGARY_TURNOUT_POLL_MS,
   }
+}
+
+export async function getHungaryGeometryRecords(
+  version: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<HungaryGeometryRecord[]> {
+  const preferredSourceMode = await resolveSourceMode(options.signal)
+  const { data } = await getGeometryBundle(version, preferredSourceMode, options.signal)
+  return data
 }

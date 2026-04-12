@@ -8,7 +8,10 @@ import { HungaryErrorBoundary } from '@/features/hungary/components/HungaryError
 import { HungaryHero } from '@/features/hungary/components/HungaryHero'
 import { HungaryMap } from '@/features/hungary/components/HungaryMap'
 import { PartyStrip } from '@/features/hungary/components/PartyStrip'
-import { getHungaryElectionSnapshot } from '@/features/hungary/services/nviAdapter'
+import {
+  getHungaryElectionSnapshot,
+  getHungaryGeometryRecords,
+} from '@/features/hungary/services/nviAdapter'
 import { useHungaryStore } from '@/features/hungary/useHungaryStore'
 import { useAppTheme } from '@/hooks/useAppTheme'
 import '@/features/hungary/hungary.css'
@@ -26,6 +29,7 @@ export function HungaryPage() {
   const snapshot = useHungaryStore((state) => state.snapshot)
   const geometryVersion = useHungaryStore((state) => state.geometryVersion)
   const geometryRecords = useHungaryStore((state) => state.geometryRecords)
+  const isGeometryLoading = useHungaryStore((state) => state.isGeometryLoading)
   const isLoading = useHungaryStore((state) => state.isLoading)
   const error = useHungaryStore((state) => state.error)
   const isStale = useHungaryStore((state) => state.isStale)
@@ -34,6 +38,9 @@ export function HungaryPage() {
   const startFetch = useHungaryStore((state) => state.startFetch)
   const applyBundle = useHungaryStore((state) => state.applyBundle)
   const markFetchFailure = useHungaryStore((state) => state.markFetchFailure)
+  const startGeometryFetch = useHungaryStore((state) => state.startGeometryFetch)
+  const applyGeometry = useHungaryStore((state) => state.applyGeometry)
+  const markGeometryFailure = useHungaryStore((state) => state.markGeometryFailure)
 
   useEffect(() => {
     clearInteraction()
@@ -61,6 +68,30 @@ export function HungaryPage() {
 
       markFetchFailure(getFetchErrorMessage(fetchError))
       return HUNGARY_CONFIG_POLL_MS
+    }
+  })
+
+  const runGeometryRefresh = useEffectEvent(async (version: string, signal: AbortSignal) => {
+    startGeometryFetch(version)
+
+    try {
+      const records = await getHungaryGeometryRecords(version, { signal })
+
+      if (signal.aborted) {
+        return
+      }
+
+      startTransition(() => {
+        applyGeometry(version, records)
+      })
+    } catch (geometryError) {
+      if (signal.aborted) {
+        return
+      }
+
+      markGeometryFailure()
+      // Geometry can fail independently; summary cards remain usable.
+      console.warn('Hungary geometry loading failed', geometryError)
     }
   })
 
@@ -99,6 +130,27 @@ export function HungaryPage() {
     }
   }, [runRefresh])
 
+  useEffect(() => {
+    if (!snapshot) {
+      return
+    }
+
+    if (isGeometryLoading) {
+      return
+    }
+
+    if (geometryVersion === snapshot.configVersion && geometryRecords.length > 0) {
+      return
+    }
+
+    const controller = new AbortController()
+    void runGeometryRefresh(snapshot.configVersion, controller.signal)
+
+    return () => {
+      controller.abort()
+    }
+  }, [geometryRecords.length, geometryVersion, isGeometryLoading, runGeometryRefresh, snapshot])
+
   return (
     <HungaryErrorBoundary>
       <main className="hungary-page" data-theme={uiTheme}>
@@ -117,15 +169,37 @@ export function HungaryPage() {
             </div>
           ) : null}
 
-          {snapshot && geometryVersion ? (
+          {snapshot ? (
             <>
               <section className="hungary-grid">
                 <div className="hungary-grid-main">
-                  <HungaryMap
-                    geometryRecords={geometryRecords}
-                    geometryVersion={geometryVersion}
-                    snapshot={snapshot}
-                  />
+                  {geometryVersion === snapshot.configVersion && geometryRecords.length > 0 ? (
+                    <HungaryMap
+                      geometryRecords={geometryRecords}
+                      geometryVersion={geometryVersion}
+                      snapshot={snapshot}
+                    />
+                  ) : (
+                    <section className="hungary-panel hungary-map-panel">
+                      <div className="hungary-panel-header">
+                        <div>
+                          <p className="hungary-panel-kicker">Map</p>
+                          <h2>106 cevre haritasi hazirlaniyor</h2>
+                        </div>
+                        {isGeometryLoading ? (
+                          <span className="hungary-badge hungary-badge--live">Harita yukleniyor</span>
+                        ) : (
+                          <span className="hungary-badge">Harita beklemede</span>
+                        )}
+                      </div>
+                      <div className="hungary-map-loading-state" aria-busy={isGeometryLoading}>
+                        <div className="hungary-map-loading-grid" />
+                        <p className="hungary-panel-text">
+                          Ozet veri once yuklenir. Cevre poligonlari ikinci asamada eklenir.
+                        </p>
+                      </div>
+                    </section>
+                  )}
                   <CheckpointTimeline snapshot={snapshot} />
                 </div>
 

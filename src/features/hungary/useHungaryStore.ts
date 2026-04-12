@@ -11,6 +11,7 @@ type HungaryStoreState = {
   snapshot: HungaryElectionSnapshot | null
   geometryVersion: string | null
   geometryRecords: HungaryGeometryRecord[]
+  isGeometryLoading: boolean
   mapMode: HungaryMapMode
   selectedConstituencyId: string | null
   hoveredConstituencyId: string | null
@@ -26,6 +27,9 @@ type HungaryStoreActions = {
   startFetch: (initialLoad: boolean) => void
   applyBundle: (bundle: HungarySnapshotBundle) => void
   markFetchFailure: (message: string) => void
+  startGeometryFetch: (version: string) => void
+  applyGeometry: (version: string, records: HungaryGeometryRecord[]) => void
+  markGeometryFailure: () => void
   setMapMode: (mode: HungaryMapMode) => void
   selectConstituency: (constituencyId: string | null) => void
   hoverConstituency: (constituencyId: string | null) => void
@@ -36,6 +40,7 @@ export const useHungaryStore = create<HungaryStoreState & HungaryStoreActions>((
   snapshot: null,
   geometryVersion: null,
   geometryRecords: [],
+  isGeometryLoading: false,
   mapMode: 'turnout',
   selectedConstituencyId: null,
   hoveredConstituencyId: null,
@@ -63,11 +68,17 @@ export const useHungaryStore = create<HungaryStoreState & HungaryStoreActions>((
         : false
 
       const geometryUnchanged = current.geometryVersion === bundle.geometryVersion
+      const nextGeometryRecords =
+        geometryUnchanged && current.geometryRecords.length > 0
+          ? current.geometryRecords
+          : bundle.geometryRecords
+      const hasGeometry = nextGeometryRecords.length > 0
 
       return {
         snapshot: bundle.snapshot,
         geometryVersion: bundle.geometryVersion,
-        geometryRecords: geometryUnchanged ? current.geometryRecords : bundle.geometryRecords,
+        geometryRecords: nextGeometryRecords,
+        isGeometryLoading: hasGeometry ? false : geometryUnchanged ? current.isGeometryLoading : false,
         mapMode:
           current.mapMode === 'results' && bundle.snapshot.mode === 'turnout'
             ? 'turnout'
@@ -92,6 +103,26 @@ export const useHungaryStore = create<HungaryStoreState & HungaryStoreActions>((
       isStale: Boolean(current.snapshot),
       staleMessage: current.snapshot ? message : null,
     }))
+  },
+
+  startGeometryFetch(version) {
+    set((current) => ({
+      geometryVersion: version,
+      geometryRecords: current.geometryVersion === version ? current.geometryRecords : [],
+      isGeometryLoading: true,
+    }))
+  },
+
+  applyGeometry(version, geometryRecords) {
+    set({
+      geometryVersion: version,
+      geometryRecords,
+      isGeometryLoading: false,
+    })
+  },
+
+  markGeometryFailure() {
+    set({ isGeometryLoading: false })
   },
 
   setMapMode(mapMode) {
