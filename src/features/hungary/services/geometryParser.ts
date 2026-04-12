@@ -115,25 +115,6 @@ function parsePolygonString(value: string) {
   return simplifyRing(sampled, SIMPLIFY_TOLERANCE)
 }
 
-function buildGeometrySeeds(version: string, records: HungaryGeometryRecord[]) {
-  const cachedSeeds = seedCache.get(version)
-
-  if (cachedSeeds) {
-    return cachedSeeds
-  }
-
-  const seeds = records
-    .map((record) => ({
-      id: record.id,
-      center: record.center,
-      ring: parsePolygonString(record.polygon),
-    }))
-    .filter((seed) => seed.ring.length >= 4)
-
-  seedCache.set(version, seeds)
-  return seeds
-}
-
 function createFeatureFromSeed(seed: HungaryGeometrySeed) {
   return new Feature({
     geometry: new Polygon([
