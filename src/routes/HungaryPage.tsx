@@ -27,7 +27,6 @@ export function HungaryPage() {
   const geometryVersion = useHungaryStore((state) => state.geometryVersion)
   const geometryRecords = useHungaryStore((state) => state.geometryRecords)
   const isLoading = useHungaryStore((state) => state.isLoading)
-  const isRefreshing = useHungaryStore((state) => state.isRefreshing)
   const error = useHungaryStore((state) => state.error)
   const isStale = useHungaryStore((state) => state.isStale)
   const staleMessage = useHungaryStore((state) => state.staleMessage)
@@ -104,7 +103,7 @@ export function HungaryPage() {
     <HungaryErrorBoundary>
       <main className="hungary-page" data-theme={uiTheme}>
         <div className="hungary-page-shell">
-          <HungaryHero isRefreshing={isRefreshing} isStale={isStale} snapshot={snapshot} />
+          <HungaryHero snapshot={snapshot} />
 
           {error && !snapshot ? (
             <div className="hungary-status-banner hungary-status-banner--error" role="alert">

@@ -12,14 +12,15 @@ import {
   formatHungaryTimestamp,
 } from '../constants'
 import type { HungaryElectionSnapshot } from '../types'
+import { useHungaryStore } from '../useHungaryStore'
 
 type HungaryHeroProps = {
   snapshot: HungaryElectionSnapshot | null
-  isRefreshing: boolean
-  isStale: boolean
 }
 
-export const HungaryHero = memo(function HungaryHero({ snapshot, isRefreshing, isStale }: HungaryHeroProps) {
+export const HungaryHero = memo(function HungaryHero({ snapshot }: HungaryHeroProps) {
+  const isRefreshing = useHungaryStore((s) => s.isRefreshing)
+  const isStale = useHungaryStore((s) => s.isStale)
   const modeLabel = snapshot?.mode === 'results' ? 'Sonuc Modu' : 'Katilim Modu'
   const tickerItems = [
     'Resmi NVI / VTR veri akisi',

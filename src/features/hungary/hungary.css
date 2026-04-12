@@ -35,27 +35,16 @@
 }
 
 .hungary-panel {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 18px;
   padding: 20px;
   border: 1px solid var(--hungary-line);
+  border-bottom: 3px solid var(--hungary-red);
   border-radius: 26px;
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--hungary-surface) 92%, transparent), var(--hungary-surface-soft)),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 70%);
-  box-shadow: 0 4px 16px rgba(3, 8, 18, 0.18);
+  background: var(--hungary-surface);
   overflow: hidden;
-}
-
-.hungary-panel::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--hungary-red), rgba(255, 255, 255, 0.8), var(--hungary-green));
-  opacity: 0.82;
+  contain: layout style paint;
 }
 
 .hungary-panel-header {
@@ -98,11 +87,8 @@
   border: 1px solid var(--hungary-line);
   border-radius: 34px;
   overflow: hidden;
-  background:
-    linear-gradient(130deg, rgba(217, 72, 95, 0.16), transparent 30%),
-    linear-gradient(230deg, rgba(31, 122, 77, 0.16), transparent 38%),
-    linear-gradient(180deg, color-mix(in srgb, var(--hungary-surface) 92%, transparent), var(--hungary-surface-soft));
-  box-shadow: 0 4px 20px rgba(4, 10, 20, 0.22);
+  background: var(--hungary-surface);
+  contain: layout style paint;
 }
 
 .hungary-hero-topline,
@@ -133,15 +119,13 @@
   padding: 0 16px;
   border-radius: 999px;
   border: 1px solid var(--hungary-line);
-  background: color-mix(in srgb, var(--hungary-surface-soft) 78%, transparent);
+  background: var(--hungary-surface-soft);
   color: inherit;
   text-decoration: none;
-  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
 }
 
 .hungary-back-link:hover,
 .hungary-chip-button:hover {
-  transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
@@ -263,7 +247,7 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--hungary-red), var(--hungary-green));
+  background: var(--hungary-red);
   transform: translateY(-50%);
 }
 
@@ -312,6 +296,8 @@
   margin-top: 18px;
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
 }
 
 .hungary-status-banner {
@@ -351,17 +337,11 @@
   min-height: 520px;
   border-radius: 22px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(217, 72, 95, 0.18), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(31, 122, 77, 0.18), transparent 34%),
-    linear-gradient(180deg, rgba(10, 17, 31, 0.76), rgba(14, 24, 42, 0.94));
+  background: rgba(12, 20, 36, 0.88);
 }
 
 .hungary-page[data-theme='light'] .hungary-map-shell {
-  background:
-    radial-gradient(circle at top left, rgba(217, 72, 95, 0.12), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(31, 122, 77, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(238, 244, 252, 0.92), rgba(232, 239, 248, 0.98));
+  background: rgba(236, 242, 250, 0.96);
 }
 
 .hungary-map-canvas {

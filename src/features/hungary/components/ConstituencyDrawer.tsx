@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 
 import { formatHungaryInteger, formatHungaryPercent } from '../constants'
 import type { HungaryElectionSnapshot } from '../types'
@@ -8,11 +8,10 @@ type ConstituencyDrawerProps = {
   snapshot: HungaryElectionSnapshot
 }
 
-export function ConstituencyDrawer({
+export const ConstituencyDrawer = memo(function ConstituencyDrawer({
   snapshot,
 }: ConstituencyDrawerProps) {
   const selectedConstituencyId = useHungaryStore((state) => state.selectedConstituencyId)
-  const hoveredConstituencyId = useHungaryStore((state) => state.hoveredConstituencyId)
 
   const constituencyById = useMemo(() => {
     const map = new Map<string, HungaryElectionSnapshot['constituencies'][number]>()
@@ -25,12 +24,11 @@ export function ConstituencyDrawer({
   const activeConstituency = useMemo(() => {
     const preferredId =
       selectedConstituencyId
-      ?? hoveredConstituencyId
       ?? snapshot.closeContests[0]?.constituencyId
       ?? snapshot.constituencies[0]?.id
 
     return (preferredId ? constituencyById.get(preferredId) : null) ?? null
-  }, [hoveredConstituencyId, selectedConstituencyId, snapshot.closeContests, snapshot.constituencies, constituencyById])
+  }, [selectedConstituencyId, snapshot.closeContests, snapshot.constituencies, constituencyById])
 
   if (!activeConstituency) {
     return null
@@ -46,7 +44,7 @@ export function ConstituencyDrawer({
       <div className="hungary-panel-header">
         <div>
           <p className="hungary-panel-kicker">
-            {selectedConstituencyId ? 'Secili cevre' : hoveredConstituencyId ? 'Imlec alti cevre' : 'Odaktaki cevre'}
+            {selectedConstituencyId ? 'Secili cevre' : 'Odaktaki cevre'}
           </p>
           <h2>{activeConstituency.name}</h2>
         </div>
@@ -123,4 +121,4 @@ export function ConstituencyDrawer({
       </div>
     </section>
   )
-}
+})
