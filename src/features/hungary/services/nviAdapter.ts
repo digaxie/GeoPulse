@@ -1221,6 +1221,6 @@ export async function getHungaryElectionSnapshot(
     }),
     geometryVersion: config.ver,
     geometryRecords: staticData.geometryRecords,
-    pollIntervalMs: HUNGARY_CONFIG_POLL_MS,
+    pollIntervalMs: mode === 'results' ? HUNGARY_RESULTS_POLL_MS : HUNGARY_TURNOUT_POLL_MS,
   }
 }

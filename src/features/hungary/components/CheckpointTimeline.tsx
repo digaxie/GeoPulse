@@ -1,10 +1,12 @@
+import { memo } from 'react'
+
 import type { HungaryElectionSnapshot } from '../types'
 
 type CheckpointTimelineProps = {
   snapshot: HungaryElectionSnapshot
 }
 
-export function CheckpointTimeline({ snapshot }: CheckpointTimelineProps) {
+export const CheckpointTimeline = memo(function CheckpointTimeline({ snapshot }: CheckpointTimelineProps) {
   const activeCode = Number(snapshot.checkpoint?.code ?? 0)
 
   return (
@@ -40,4 +42,4 @@ export function CheckpointTimeline({ snapshot }: CheckpointTimelineProps) {
       </div>
     </section>
   )
-}
+})

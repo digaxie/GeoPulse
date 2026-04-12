@@ -1,3 +1,5 @@
+import { memo } from 'react'
+
 import { formatHungaryInteger, formatHungaryPercent } from '../constants'
 import type { HungaryElectionSnapshot } from '../types'
 
@@ -5,7 +7,7 @@ type CloseContestsProps = {
   snapshot: HungaryElectionSnapshot
 }
 
-export function CloseContests({ snapshot }: CloseContestsProps) {
+export const CloseContests = memo(function CloseContests({ snapshot }: CloseContestsProps) {
   const isLive = snapshot.closeContests[0]?.kind === 'live-close'
 
   return (
@@ -56,4 +58,4 @@ export function CloseContests({ snapshot }: CloseContestsProps) {
       </div>
     </section>
   )
-}
+})

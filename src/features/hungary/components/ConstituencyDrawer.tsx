@@ -2,18 +2,26 @@ import { useMemo } from 'react'
 
 import { formatHungaryInteger, formatHungaryPercent } from '../constants'
 import type { HungaryElectionSnapshot } from '../types'
+import { useHungaryStore } from '../useHungaryStore'
 
 type ConstituencyDrawerProps = {
   snapshot: HungaryElectionSnapshot
-  selectedConstituencyId: string | null
-  hoveredConstituencyId: string | null
 }
 
 export function ConstituencyDrawer({
   snapshot,
-  selectedConstituencyId,
-  hoveredConstituencyId,
 }: ConstituencyDrawerProps) {
+  const selectedConstituencyId = useHungaryStore((state) => state.selectedConstituencyId)
+  const hoveredConstituencyId = useHungaryStore((state) => state.hoveredConstituencyId)
+
+  const constituencyById = useMemo(() => {
+    const map = new Map<string, HungaryElectionSnapshot['constituencies'][number]>()
+    for (const c of snapshot.constituencies) {
+      map.set(c.id, c)
+    }
+    return map
+  }, [snapshot.constituencies])
+
   const activeConstituency = useMemo(() => {
     const preferredId =
       selectedConstituencyId
@@ -21,8 +29,8 @@ export function ConstituencyDrawer({
       ?? snapshot.closeContests[0]?.constituencyId
       ?? snapshot.constituencies[0]?.id
 
-    return snapshot.constituencies.find((constituency) => constituency.id === preferredId) ?? null
-  }, [hoveredConstituencyId, selectedConstituencyId, snapshot])
+    return (preferredId ? constituencyById.get(preferredId) : null) ?? null
+  }, [hoveredConstituencyId, selectedConstituencyId, snapshot.closeContests, snapshot.constituencies, constituencyById])
 
   if (!activeConstituency) {
     return null

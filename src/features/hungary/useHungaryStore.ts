@@ -62,10 +62,12 @@ export const useHungaryStore = create<HungaryStoreState & HungaryStoreActions>((
           )
         : false
 
+      const geometryUnchanged = current.geometryVersion === bundle.geometryVersion
+
       return {
         snapshot: bundle.snapshot,
         geometryVersion: bundle.geometryVersion,
-        geometryRecords: bundle.geometryRecords,
+        geometryRecords: geometryUnchanged ? current.geometryRecords : bundle.geometryRecords,
         mapMode:
           current.mapMode === 'results' && bundle.snapshot.mode === 'turnout'
             ? 'turnout'

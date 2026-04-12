@@ -1,3 +1,5 @@
+import { memo } from 'react'
+
 import { getHungaryAllianceColor, formatHungaryInteger, formatHungaryPercent } from '../constants'
 import type { HungaryElectionSnapshot, HungaryListKind } from '../types'
 
@@ -17,7 +19,7 @@ function getListKindLabel(kind: HungaryListKind) {
   return 'Ulusal liste'
 }
 
-export function PartyStrip({ snapshot }: PartyStripProps) {
+export const PartyStrip = memo(function PartyStrip({ snapshot }: PartyStripProps) {
   return (
     <section className="hungary-panel">
       <div className="hungary-panel-header">
@@ -76,4 +78,4 @@ export function PartyStrip({ snapshot }: PartyStripProps) {
       </div>
     </section>
   )
-}
+})

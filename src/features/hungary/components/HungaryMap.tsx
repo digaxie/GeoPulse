@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 
 import type { FeatureLike } from 'ol/Feature'
 import { defaults as defaultControls } from 'ol/control/defaults'
@@ -45,14 +45,21 @@ function withOpacity(color: string, opacity: number) {
   return color
 }
 
-function resolveFillColor(snapshot: HungaryElectionSnapshot, mapMode: HungaryMapMode, constituencyId: string) {
-  const constituency = snapshot.constituencies.find((entry) => entry.id === constituencyId)
+const FALLBACK_FILL = 'rgba(164, 175, 193, 0.34)'
+
+function resolveFillColor(
+  constituencyById: Map<string, HungaryElectionSnapshot['constituencies'][number]>,
+  snapshotMode: HungaryElectionSnapshot['mode'],
+  mapMode: HungaryMapMode,
+  constituencyId: string,
+) {
+  const constituency = constituencyById.get(constituencyId)
 
   if (!constituency) {
-    return 'rgba(164, 175, 193, 0.34)'
+    return FALLBACK_FILL
   }
 
-  if (mapMode === 'results' && snapshot.mode === 'results') {
+  if (mapMode === 'results' && snapshotMode === 'results') {
     return getHungaryAllianceColor(constituency.leadingAlliance)
   }
 
@@ -63,7 +70,36 @@ function resolveFillColor(snapshot: HungaryElectionSnapshot, mapMode: HungaryMap
   return getHungaryTurnoutColor(constituency.turnoutPct)
 }
 
-export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: HungaryMapProps) {
+const styleCache = new Map<string, Style>()
+
+function getOrCreateStyle(fillColor: string, isSelected: boolean, isHovered: boolean) {
+  const state = isSelected ? 's' : isHovered ? 'h' : 'n'
+  const key = `${fillColor}:${state}`
+
+  const cached = styleCache.get(key)
+  if (cached) {
+    return cached
+  }
+
+  const style = new Style({
+    fill: new Fill({
+      color: withOpacity(fillColor, isSelected ? 0.92 : isHovered ? 0.84 : 0.76),
+    }),
+    stroke: new Stroke({
+      color: isSelected
+        ? '#fffaf0'
+        : isHovered
+          ? '#ffe082'
+          : 'rgba(255, 255, 255, 0.42)',
+      width: isSelected ? 2.6 : isHovered ? 2 : 1.1,
+    }),
+  })
+
+  styleCache.set(key, style)
+  return style
+}
+
+function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: HungaryMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<OLMap | null>(null)
   const layerRef = useRef<VectorLayer<VectorSource> | null>(null)
@@ -71,7 +107,8 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
   const hoveredConstituencyIdRef = useRef<string | null>(null)
   const selectedConstituencyIdRef = useRef<string | null>(null)
   const mapModeRef = useRef<HungaryMapMode>('turnout')
-  const snapshotRef = useRef(snapshot)
+  const snapshotModeRef = useRef(snapshot.mode)
+  const constituencyByIdRef = useRef<Map<string, HungaryElectionSnapshot['constituencies'][number]>>(new Map())
 
   const mapMode = useHungaryStore((state) => state.mapMode)
   const hoveredConstituencyId = useHungaryStore((state) => state.hoveredConstituencyId)
@@ -85,13 +122,40 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
     [geometryRecords, geometryVersion],
   )
 
+  const constituencyById = useMemo(() => {
+    const map = new Map<string, HungaryElectionSnapshot['constituencies'][number]>()
+    for (const c of snapshot.constituencies) {
+      map.set(c.id, c)
+    }
+    return map
+  }, [snapshot.constituencies])
+
   useEffect(() => {
+    constituencyByIdRef.current = constituencyById
+    snapshotModeRef.current = snapshot.mode
+  }, [constituencyById, snapshot.mode])
+
+  useEffect(() => {
+    const prevHover = hoveredConstituencyIdRef.current
+    const prevSelect = selectedConstituencyIdRef.current
+    const prevMode = mapModeRef.current
+
     hoveredConstituencyIdRef.current = hoveredConstituencyId
     selectedConstituencyIdRef.current = selectedConstituencyId
     mapModeRef.current = mapMode
-    snapshotRef.current = snapshot
+
+    if (
+      prevHover !== hoveredConstituencyId
+      || prevSelect !== selectedConstituencyId
+      || prevMode !== mapMode
+    ) {
+      layerRef.current?.changed()
+    }
+  }, [hoveredConstituencyId, mapMode, selectedConstituencyId])
+
+  useEffect(() => {
     layerRef.current?.changed()
-  }, [hoveredConstituencyId, mapMode, selectedConstituencyId, snapshot])
+  }, [constituencyById])
 
   useEffect(() => {
     if (!mapElementRef.current || mapRef.current) {
@@ -105,23 +169,16 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
       updateWhileInteracting: true,
       style: (feature: FeatureLike) => {
         const constituencyId = String(feature.get('constituencyId') ?? '')
-        const fillColor = resolveFillColor(snapshotRef.current, mapModeRef.current, constituencyId)
+        const fillColor = resolveFillColor(
+          constituencyByIdRef.current,
+          snapshotModeRef.current,
+          mapModeRef.current,
+          constituencyId,
+        )
         const isSelected = constituencyId === selectedConstituencyIdRef.current
         const isHovered = constituencyId === hoveredConstituencyIdRef.current
 
-        return new Style({
-          fill: new Fill({
-            color: withOpacity(fillColor, isSelected ? 0.92 : isHovered ? 0.84 : 0.76),
-          }),
-          stroke: new Stroke({
-            color: isSelected
-              ? '#fffaf0'
-              : isHovered
-                ? '#ffe082'
-                : 'rgba(255, 255, 255, 0.42)',
-            width: isSelected ? 2.6 : isHovered ? 2 : 1.1,
-          }),
-        })
+        return getOrCreateStyle(fillColor, isSelected, isHovered)
       },
     })
 
@@ -139,6 +196,8 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
         maxZoom: 10.8,
       }),
     })
+
+    let lastHoveredId: string | null = null
 
     map.on('pointermove', (event) => {
       if (event.dragging) {
@@ -160,8 +219,11 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
         { hitTolerance: 3 },
       )
 
-      hoverConstituency(nextHoveredId)
-      map.getViewport().style.cursor = nextHoveredId ? 'pointer' : ''
+      if (nextHoveredId !== lastHoveredId) {
+        lastHoveredId = nextHoveredId
+        hoverConstituency(nextHoveredId)
+        map.getViewport().style.cursor = nextHoveredId ? 'pointer' : ''
+      }
     })
 
     map.on('click', (event) => {
@@ -184,6 +246,7 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
     })
 
     const handleMouseLeave = () => {
+      lastHoveredId = null
       hoverConstituency(null)
       map.getViewport().style.cursor = ''
     }
@@ -216,10 +279,6 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
     sourceRef.current.addFeatures(features)
 
     const extent = sourceRef.current.getExtent()
-    if (!extent) {
-      return
-    }
-
     if (extent.some((value) => !Number.isFinite(value))) {
       return
     }
@@ -277,3 +336,5 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
     </section>
   )
 }
+
+export const HungaryMap = memo(HungaryMapInner)

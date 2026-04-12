@@ -31,8 +31,6 @@ export function HungaryPage() {
   const error = useHungaryStore((state) => state.error)
   const isStale = useHungaryStore((state) => state.isStale)
   const staleMessage = useHungaryStore((state) => state.staleMessage)
-  const selectedConstituencyId = useHungaryStore((state) => state.selectedConstituencyId)
-  const hoveredConstituencyId = useHungaryStore((state) => state.hoveredConstituencyId)
   const clearInteraction = useHungaryStore((state) => state.clearInteraction)
   const startFetch = useHungaryStore((state) => state.startFetch)
   const applyBundle = useHungaryStore((state) => state.applyBundle)
@@ -134,8 +132,6 @@ export function HungaryPage() {
 
                 <div className="hungary-grid-side">
                   <ConstituencyDrawer
-                    hoveredConstituencyId={hoveredConstituencyId}
-                    selectedConstituencyId={selectedConstituencyId}
                     snapshot={snapshot}
                   />
                   <section className="hungary-panel">
