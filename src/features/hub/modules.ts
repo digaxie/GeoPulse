@@ -94,6 +94,20 @@ export function createHubModules({
       helperText: 'M3U/IPTV kanallarini grid gorunumunde izleyin.',
     },
     {
+      id: 'hungary',
+      title: 'GeoPulse - Hungary',
+      description:
+        '12 Nisan 2026 Macaristan secimi icin resmi NVI veri akisi, 106 cevre haritasi ve canli oy takibi.',
+      status: 'active',
+      href: '/app/hungary',
+      ctaLabel: 'Secim Gecesini Ac',
+      visibleIn: 'always',
+      entryKind: 'internal',
+      accent: 'rose',
+      badge: 'HU',
+      helperText: 'Katilim ve sonuc modu config.json ile otomatik degisir.',
+    },
+    {
       id: 'notes',
       title: 'Intel Notes',
       description:

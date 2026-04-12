@@ -9,7 +9,13 @@ describe('createHubModules', () => {
       deckLocalUrl: 'https://geodeck.fly.dev',
     })
 
-    expect(modules.map((module) => module.id)).toEqual(['scenarios', 'deck', 'tv', 'notes'])
+    expect(modules.map((module) => module.id)).toEqual([
+      'scenarios',
+      'deck',
+      'tv',
+      'hungary',
+      'notes',
+    ])
     expect(modules.find((module) => module.id === 'deck')?.healthCheckUrl).toBeUndefined()
   })
 
@@ -19,7 +25,13 @@ describe('createHubModules', () => {
       deckLocalUrl: 'http://127.0.0.1:3211/',
     })
 
-    expect(modules.map((module) => module.id)).toEqual(['scenarios', 'deck', 'tv', 'notes'])
+    expect(modules.map((module) => module.id)).toEqual([
+      'scenarios',
+      'deck',
+      'tv',
+      'hungary',
+      'notes',
+    ])
     expect(modules.find((module) => module.id === 'deck')?.healthCheckUrl).toBe(
       'http://127.0.0.1:3211/api/health',
     )

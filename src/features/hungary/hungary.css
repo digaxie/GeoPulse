@@ -1,0 +1,731 @@
+.hungary-page {
+  --hungary-red: #d9485f;
+  --hungary-white: #f8f5f0;
+  --hungary-green: #1f7a4d;
+  --hungary-ink: #0f1d36;
+  --hungary-surface: rgba(12, 24, 44, 0.78);
+  --hungary-surface-soft: rgba(18, 33, 59, 0.58);
+  --hungary-line: rgba(255, 255, 255, 0.12);
+  --hungary-text: #eef4fb;
+  --hungary-muted: rgba(223, 232, 244, 0.72);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(217, 72, 95, 0.34), transparent 30%),
+    radial-gradient(circle at top right, rgba(31, 122, 77, 0.24), transparent 35%),
+    linear-gradient(180deg, #081225 0%, #0d1930 40%, #111e34 100%);
+  color: var(--hungary-text);
+}
+
+.hungary-page[data-theme='light'] {
+  --hungary-surface: rgba(255, 255, 255, 0.88);
+  --hungary-surface-soft: rgba(248, 251, 255, 0.84);
+  --hungary-line: rgba(44, 72, 119, 0.12);
+  --hungary-text: #10203b;
+  --hungary-muted: rgba(36, 61, 94, 0.7);
+  background:
+    radial-gradient(circle at top left, rgba(217, 72, 95, 0.16), transparent 32%),
+    radial-gradient(circle at top right, rgba(31, 122, 77, 0.14), transparent 34%),
+    linear-gradient(180deg, #f5f8fd 0%, #edf2f8 48%, #e8eef5 100%);
+}
+
+.hungary-page-shell {
+  width: min(1440px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+
+.hungary-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--hungary-line);
+  border-radius: 26px;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--hungary-surface) 92%, transparent), var(--hungary-surface-soft)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 70%);
+  box-shadow: 0 18px 48px rgba(3, 8, 18, 0.22);
+  overflow: hidden;
+}
+
+.hungary-panel::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--hungary-red), rgba(255, 255, 255, 0.8), var(--hungary-green));
+  opacity: 0.82;
+}
+
+.hungary-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.hungary-panel-header h2,
+.hungary-panel h1,
+.hungary-panel h3 {
+  margin: 0;
+}
+
+.hungary-panel-kicker,
+.hungary-kicker {
+  margin: 0 0 6px;
+  color: var(--hungary-muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.hungary-panel-text,
+.hungary-subtitle,
+.hungary-copy-meta,
+.hungary-stat-hint,
+.hungary-contest-head p,
+.hungary-party-head p,
+.hungary-brief-row span,
+.hungary-candidate-row span,
+.hungary-timeline-item span {
+  color: var(--hungary-muted);
+}
+
+.hungary-hero {
+  position: relative;
+  padding: 28px;
+  border: 1px solid var(--hungary-line);
+  border-radius: 34px;
+  overflow: hidden;
+  background:
+    linear-gradient(130deg, rgba(217, 72, 95, 0.16), transparent 30%),
+    linear-gradient(230deg, rgba(31, 122, 77, 0.16), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--hungary-surface) 92%, transparent), var(--hungary-surface-soft));
+  box-shadow: 0 28px 70px rgba(4, 10, 20, 0.26);
+}
+
+.hungary-hero::before,
+.hungary-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  filter: blur(22px);
+  opacity: 0.28;
+}
+
+.hungary-hero::before {
+  top: -40px;
+  right: -40px;
+  background: rgba(217, 72, 95, 0.46);
+}
+
+.hungary-hero::after {
+  bottom: -70px;
+  left: -50px;
+  background: rgba(31, 122, 77, 0.34);
+}
+
+.hungary-hero-topline,
+.hungary-hero-grid,
+.hungary-stat-grid,
+.hungary-ticker,
+.hungary-grid,
+.hungary-bottom-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.hungary-hero-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+.hungary-back-link,
+.hungary-chip-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--hungary-line);
+  background: color-mix(in srgb, var(--hungary-surface-soft) 78%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.hungary-back-link:hover,
+.hungary-chip-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.hungary-chip-button--solid {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--hungary-red), #ff8a5c);
+  color: #fff;
+}
+
+.hungary-status-row,
+.hungary-copy-meta,
+.hungary-briefing-grid,
+.hungary-drawer-tags,
+.hungary-drawer-previous-meta,
+.hungary-party-meta,
+.hungary-contest-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hungary-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hungary-line);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.78rem;
+}
+
+.hungary-badge--mode {
+  background: rgba(31, 122, 77, 0.18);
+}
+
+.hungary-badge--live {
+  background: rgba(217, 72, 95, 0.2);
+}
+
+.hungary-badge--warn {
+  background: rgba(240, 186, 50, 0.18);
+}
+
+.hungary-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  gap: 24px;
+}
+
+.hungary-hero-copy h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 4vw, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.hungary-subtitle {
+  max-width: 68ch;
+  margin: 16px 0 18px;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.hungary-hero-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.hungary-brief-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hungary-brief-row strong {
+  font-size: 1.14rem;
+}
+
+.hungary-ticker {
+  margin: 20px 0 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hungary-ticker-track {
+  display: flex;
+  gap: 28px;
+  width: max-content;
+  padding: 12px 0;
+  animation: hungaryTicker 28s linear infinite;
+}
+
+.hungary-ticker-item {
+  position: relative;
+  padding-left: 18px;
+  color: var(--hungary-muted);
+  white-space: nowrap;
+}
+
+.hungary-ticker-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--hungary-red), var(--hungary-green));
+  transform: translateY(-50%);
+}
+
+.hungary-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.hungary-stat-card {
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hungary-stat-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--hungary-muted);
+  font-size: 0.84rem;
+}
+
+.hungary-stat-value {
+  display: block;
+  font-size: 1.36rem;
+  line-height: 1.1;
+}
+
+.hungary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.hungary-grid-main,
+.hungary-grid-side,
+.hungary-bottom-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hungary-bottom-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+}
+
+.hungary-status-banner {
+  margin-top: 18px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--hungary-line);
+}
+
+.hungary-status-banner--warn {
+  background: rgba(240, 186, 50, 0.14);
+}
+
+.hungary-status-banner--error {
+  background: rgba(217, 72, 95, 0.14);
+}
+
+.hungary-loading-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.hungary-loading-card {
+  min-height: 260px;
+  border-radius: 28px;
+  border: 1px solid var(--hungary-line);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  background-size: 240% 100%;
+  animation: hungaryShimmer 1.8s ease infinite;
+}
+
+.hungary-map-shell {
+  position: relative;
+  min-height: 520px;
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(217, 72, 95, 0.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(31, 122, 77, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(10, 17, 31, 0.76), rgba(14, 24, 42, 0.94));
+}
+
+.hungary-page[data-theme='light'] .hungary-map-shell {
+  background:
+    radial-gradient(circle at top left, rgba(217, 72, 95, 0.12), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(31, 122, 77, 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(238, 244, 252, 0.92), rgba(232, 239, 248, 0.98));
+}
+
+.hungary-map-canvas {
+  width: 100%;
+  height: 520px;
+}
+
+.hungary-map-overlay {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(6, 11, 20, 0.66);
+  backdrop-filter: blur(8px);
+}
+
+.hungary-page[data-theme='light'] .hungary-map-overlay {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.hungary-map-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hungary-map-toggle-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hungary-line);
+  background: transparent;
+  color: inherit;
+}
+
+.hungary-map-toggle-button--active {
+  background: linear-gradient(135deg, rgba(217, 72, 95, 0.2), rgba(31, 122, 77, 0.18));
+}
+
+.hungary-map-toggle-button:disabled {
+  opacity: 0.45;
+}
+
+.hungary-map-panel .ol-zoom {
+  top: 18px;
+  right: 18px;
+  left: auto;
+}
+
+.hungary-map-panel .ol-zoom button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.86);
+  color: #10203b;
+  border-radius: 12px;
+}
+
+.hungary-timeline {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hungary-timeline-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--hungary-line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hungary-timeline-item--complete {
+  border-color: rgba(31, 122, 77, 0.32);
+}
+
+.hungary-timeline-item--active {
+  border-color: rgba(217, 72, 95, 0.36);
+}
+
+.hungary-timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.hungary-timeline-item--complete .hungary-timeline-dot {
+  background: var(--hungary-green);
+}
+
+.hungary-timeline-item--active .hungary-timeline-dot {
+  background: var(--hungary-red);
+}
+
+.hungary-drawer-stats,
+.hungary-briefing-grid,
+.hungary-party-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.hungary-drawer-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hungary-drawer-stats div,
+.hungary-briefing-grid div {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--hungary-line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hungary-drawer-stats span,
+.hungary-briefing-grid span {
+  display: block;
+  color: var(--hungary-muted);
+  font-size: 0.82rem;
+}
+
+.hungary-drawer-stats strong,
+.hungary-briefing-grid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.22rem;
+}
+
+.hungary-drawer-previous {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(217, 72, 95, 0.22);
+  background: rgba(217, 72, 95, 0.08);
+}
+
+.hungary-drawer-previous h3 {
+  margin: 0 0 8px;
+}
+
+.hungary-candidate-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hungary-candidate-table-head,
+.hungary-candidate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.hungary-candidate-table-head {
+  color: var(--hungary-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.hungary-candidate-row {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--hungary-line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hungary-candidate-row strong,
+.hungary-contest-row strong,
+.hungary-party-head h3 {
+  display: block;
+}
+
+.hungary-candidate-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.hungary-contest-list {
+  display: grid;
+  gap: 12px;
+}
+
+.hungary-contest-card,
+.hungary-party-card {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--hungary-line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.hungary-contest-head,
+.hungary-party-head,
+.hungary-contest-row,
+.hungary-party-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.hungary-contest-head {
+  margin-bottom: 12px;
+}
+
+.hungary-contest-row + .hungary-contest-row {
+  margin-top: 8px;
+}
+
+.hungary-party-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.hungary-party-bar {
+  height: 10px;
+  margin: 14px 0 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hungary-party-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.hungary-party-stats {
+  margin-top: 14px;
+  align-items: center;
+}
+
+.hungary-error-panel {
+  max-width: 720px;
+  margin: 8vh auto 0;
+}
+
+.hungary-error-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@keyframes hungaryTicker {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes hungaryShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@media (max-width: 1180px) {
+  .hungary-hero-grid,
+  .hungary-grid,
+  .hungary-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hungary-timeline {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .hungary-page-shell {
+    width: min(100vw - 24px, 100%);
+    padding-top: 18px;
+  }
+
+  .hungary-hero,
+  .hungary-panel {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .hungary-hero-topline,
+  .hungary-panel-header,
+  .hungary-hero-grid {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hungary-stat-grid,
+  .hungary-loading-board {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hungary-timeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hungary-map-canvas,
+  .hungary-map-shell {
+    min-height: 420px;
+    height: 420px;
+  }
+}
+
+@media (max-width: 620px) {
+  .hungary-hero-copy h1 {
+    font-size: 2.2rem;
+  }
+
+  .hungary-stat-grid,
+  .hungary-loading-board,
+  .hungary-drawer-stats,
+  .hungary-briefing-grid,
+  .hungary-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .hungary-candidate-table-head,
+  .hungary-candidate-row,
+  .hungary-party-stats,
+  .hungary-contest-head,
+  .hungary-contest-row {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hungary-candidate-metrics {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
