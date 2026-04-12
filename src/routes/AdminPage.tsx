@@ -3,10 +3,16 @@ import { Link, Navigate } from 'react-router-dom'
 
 import { SiteCredit } from '@/components/layout/SiteCredit'
 import { useAuth } from '@/features/auth/useAuth'
+import { createDefaultHubModuleConfigs } from '@/features/hub/modules'
 import { useAppTheme } from '@/hooks/useAppTheme'
 import { backendClient } from '@/lib/backend'
 import { getSupabaseAccessToken } from '@/lib/backend/supabaseBackend'
-import type { AdminUserRecord, UserRole } from '@/lib/backend/types'
+import type {
+  AdminUserRecord,
+  HubModuleConfigRecord,
+  UpdateHubModuleConfigInput,
+  UserRole,
+} from '@/lib/backend/types'
 import { appEnv } from '@/lib/env'
 import { formatRelativeDate } from '@/lib/utils'
 
@@ -42,12 +48,41 @@ type RevealedPassword = {
   reason: 'create' | 'rotate'
 }
 
+type HubModuleAdminDraft = UpdateHubModuleConfigInput & {
+  updatedAt: string | null
+}
+
 async function copyToClipboard(value: string) {
   await navigator.clipboard.writeText(value)
 }
 
+function mergeHubModuleDrafts(
+  defaults: UpdateHubModuleConfigInput[],
+  records: HubModuleConfigRecord[],
+): HubModuleAdminDraft[] {
+  const recordMap = new Map(records.map((record) => [record.id, record]))
+
+  return defaults.map((defaultConfig) => {
+    const record = recordMap.get(defaultConfig.id)
+
+    return {
+      ...defaultConfig,
+      ...(record ?? {}),
+      updatedAt: record?.updatedAt ?? null,
+    }
+  })
+}
+
 export function AdminPage() {
   const { session, isLoading } = useAuth()
+  const defaultHubModuleConfigs = useMemo(
+    () =>
+      createDefaultHubModuleConfigs({
+        enableLocalHub: appEnv.enableLocalHub,
+        deckLocalUrl: appEnv.deckLocalUrl,
+      }),
+    [],
+  )
   const [users, setUsers] = useState<AdminUserRecord[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
@@ -62,6 +97,13 @@ export function AdminPage() {
   const [deckStats, setDeckStats] = useState<DeckStats>(null)
   const [deckError, setDeckError] = useState<string | null>(null)
   const [deckLoading, setDeckLoading] = useState(true)
+  const [hubModules, setHubModules] = useState<HubModuleAdminDraft[]>(
+    mergeHubModuleDrafts(defaultHubModuleConfigs, []),
+  )
+  const [hubModuleLoading, setHubModuleLoading] = useState(true)
+  const [hubModuleError, setHubModuleError] = useState<string | null>(null)
+  const [hubModuleNotice, setHubModuleNotice] = useState<string | null>(null)
+  const [busyModuleId, setBusyModuleId] = useState<string | null>(null)
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total])
 
@@ -129,6 +171,45 @@ export function AdminPage() {
 
     return () => { active = false }
   }, [session])
+
+  useEffect(() => {
+    if (!session || session.role !== 'admin') {
+      return
+    }
+
+    let active = true
+    setHubModuleLoading(true)
+    setHubModuleError(null)
+
+    void backendClient
+      .listHubModuleConfigs()
+      .then((records) => {
+        if (!active) {
+          return
+        }
+
+        setHubModules(mergeHubModuleDrafts(defaultHubModuleConfigs, records))
+      })
+      .catch((loadError) => {
+        if (!active) {
+          return
+        }
+
+        setHubModuleError(
+          loadError instanceof Error ? loadError.message : 'Hub kart ayarlari yuklenemedi.',
+        )
+        setHubModules(mergeHubModuleDrafts(defaultHubModuleConfigs, []))
+      })
+      .finally(() => {
+        if (active) {
+          setHubModuleLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [defaultHubModuleConfigs, session])
 
   if (!isLoading && !session) {
     return <Navigate to="/login" replace />
@@ -217,6 +298,94 @@ export function AdminPage() {
     }
   }
 
+  function handleHubModuleChange(
+    moduleId: string,
+    field: keyof UpdateHubModuleConfigInput,
+    value: string,
+  ) {
+    setHubModules((current) =>
+      current.map((module) =>
+        module.id === moduleId
+          ? {
+              ...module,
+              [field]: value,
+            }
+          : module,
+      ),
+    )
+    setHubModuleNotice(null)
+    setHubModuleError(null)
+  }
+
+  function handleResetHubModule(moduleId: string) {
+    const fallback = defaultHubModuleConfigs.find((module) => module.id === moduleId)
+    if (!fallback) {
+      return
+    }
+
+    setHubModules((current) =>
+      current.map((module) =>
+        module.id === moduleId
+          ? {
+              ...fallback,
+              updatedAt: module.updatedAt,
+            }
+          : module,
+      ),
+    )
+    setHubModuleNotice(null)
+    setHubModuleError(null)
+  }
+
+  async function handleSaveHubModule(
+    event: React.FormEvent<HTMLFormElement>,
+    moduleId: string,
+  ) {
+    event.preventDefault()
+    const draft = hubModules.find((module) => module.id === moduleId)
+    if (!draft) {
+      return
+    }
+
+    setBusyModuleId(moduleId)
+    setHubModuleError(null)
+    setHubModuleNotice(null)
+
+    try {
+      const saved = await backendClient.updateHubModuleConfig({
+        id: draft.id,
+        controlState: draft.controlState,
+        title: draft.title,
+        description: draft.description,
+        ctaLabel: draft.ctaLabel,
+        secondaryCtaLabel: draft.secondaryCtaLabel,
+        badge: draft.badge,
+        helperText: draft.helperText,
+        warningText: draft.warningText,
+        statusLabel: draft.statusLabel,
+      })
+
+      setHubModules((current) =>
+        current.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                ...saved,
+                updatedAt: saved.updatedAt,
+              }
+            : module,
+        ),
+      )
+      setHubModuleNotice(`${saved.title} karti kaydedildi.`)
+    } catch (saveError) {
+      setHubModuleError(
+        saveError instanceof Error ? saveError.message : 'Hub kart ayari kaydedilemedi.',
+      )
+    } finally {
+      setBusyModuleId(null)
+    }
+  }
+
   const { uiTheme, setUiTheme, isDarkTheme } = useAppTheme()
 
   return (
@@ -253,6 +422,8 @@ export function AdminPage() {
       </header>
 
       {error ? <p className="form-error">{error}</p> : null}
+      {hubModuleError ? <p className="form-error">{hubModuleError}</p> : null}
+      {hubModuleNotice ? <p className="status-note">{hubModuleNotice}</p> : null}
 
       {revealedPassword ? (
         <section className="status-note status-note-warning admin-password-card">
@@ -403,6 +574,156 @@ export function AdminPage() {
             </button>
           </div>
         </section>
+      </section>
+
+      <section className="admin-card admin-card-full" style={{ marginTop: '2rem' }}>
+        <div className="admin-card-header">
+          <div>
+            <p className="eyebrow">Hub Modulleri</p>
+            <h2>Kart Kontrolleri</h2>
+          </div>
+          <p className="panel-empty">
+            Hub uzerindeki kartlari gizle, pasife al veya metinlerini degistir.
+          </p>
+        </div>
+
+        {hubModuleLoading ? (
+          <p className="panel-empty">Kart ayarlari yukleniyor...</p>
+        ) : (
+          <div className="admin-module-grid">
+            {hubModules.map((module) => {
+              const isBusy = busyModuleId === module.id
+
+              return (
+                <form
+                  className="admin-module-editor"
+                  key={module.id}
+                  onSubmit={(event) => void handleSaveHubModule(event, module.id)}
+                >
+                  <div className="admin-module-editor-head">
+                    <div>
+                      <p className="eyebrow">{module.id}</p>
+                      <h3>{module.title}</h3>
+                    </div>
+                    <span className="panel-empty">
+                      {module.updatedAt ? `Son kayit ${formatRelativeDate(module.updatedAt)}` : 'Varsayilan'}
+                    </span>
+                  </div>
+
+                  <div className="admin-module-editor-grid">
+                    <label>
+                      <span>Durum</span>
+                      <select
+                        value={module.controlState}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'controlState', event.target.value)
+                        }
+                      >
+                        <option value="enabled">enabled</option>
+                        <option value="disabled">disabled</option>
+                        <option value="hidden">hidden</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>Durum etiketi</span>
+                      <input
+                        value={module.statusLabel}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'statusLabel', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      <span>Kart basligi</span>
+                      <input
+                        value={module.title}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'title', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      <span>Badge</span>
+                      <input
+                        value={module.badge}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'badge', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label className="admin-module-editor-span-2">
+                      <span>Aciklama</span>
+                      <textarea
+                        value={module.description}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'description', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label className="admin-module-editor-span-2">
+                      <span>Yardimci metin</span>
+                      <textarea
+                        value={module.helperText}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'helperText', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label className="admin-module-editor-span-2">
+                      <span>Uyari metni</span>
+                      <textarea
+                        value={module.warningText}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'warningText', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      <span>Ana buton</span>
+                      <input
+                        value={module.ctaLabel}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'ctaLabel', event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      <span>Ikincil buton</span>
+                      <input
+                        value={module.secondaryCtaLabel}
+                        onChange={(event) =>
+                          handleHubModuleChange(module.id, 'secondaryCtaLabel', event.target.value)
+                        }
+                        placeholder={module.id === 'scenarios' ? '+ Yeni senaryo' : 'Opsiyonel'}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="admin-module-editor-actions">
+                    <button
+                      className="ghost-button"
+                      onClick={() => handleResetHubModule(module.id)}
+                      type="button"
+                    >
+                      Varsayilana don
+                    </button>
+                    <button className="primary-button" disabled={isBusy} type="submit">
+                      {isBusy ? 'Kaydediliyor...' : 'Kaydet'}
+                    </button>
+                  </div>
+                </form>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       <section className="admin-grid" style={{ marginTop: '2rem' }}>

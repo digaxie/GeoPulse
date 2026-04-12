@@ -350,6 +350,25 @@
   contain: strict;
 }
 
+.hungary-map-processing-overlay {
+  position: absolute;
+  inset: 18px 18px auto 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(6, 11, 20, 0.82);
+  backdrop-filter: blur(8px);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.hungary-page[data-theme='light'] .hungary-map-processing-overlay {
+  background: rgba(255, 255, 255, 0.88);
+}
+
 .hungary-map-loading-state {
   display: flex;
   flex-direction: column;

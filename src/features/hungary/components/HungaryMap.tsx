@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import Feature from 'ol/Feature'
 import type Polygon from 'ol/geom/Polygon'
@@ -16,7 +16,10 @@ import {
   getHungaryAllianceColor,
   getHungaryTurnoutColor,
 } from '../constants'
-import { buildHungaryGeometryFeatures } from '../services/geometryParser'
+import {
+  getCachedHungaryGeometryFeatures,
+  prepareHungaryGeometryFeatures,
+} from '../services/geometryParser'
 import type { HungaryElectionSnapshot, HungaryGeometryRecord, HungaryMapMode } from '../types'
 import { useHungaryStore } from '../useHungaryStore'
 
@@ -92,17 +95,77 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
   const hoverConstituency = useHungaryStore((s) => s.hoverConstituency)
   const selectConstituency = useHungaryStore((s) => s.selectConstituency)
   const setMapMode = useHungaryStore((s) => s.setMapMode)
-
-  const features = useMemo(
-    () => buildHungaryGeometryFeatures(geometryVersion, geometryRecords),
-    [geometryRecords, geometryVersion],
-  )
+  const [preparedGeometry, setPreparedGeometry] = useState<{
+    version: string
+    features: Feature<Polygon>[]
+  } | null>(() => {
+    const cached = getCachedHungaryGeometryFeatures(geometryVersion)
+    return cached ? { version: geometryVersion, features: cached } : null
+  })
+  const [isPreparingGeometry, setIsPreparingGeometry] = useState(false)
+  const [geometryPrepError, setGeometryPrepError] = useState<string | null>(null)
 
   const constituencyById = useMemo(() => {
     const m = new Map<string, HungaryElectionSnapshot['constituencies'][number]>()
     for (const c of snapshot.constituencies) m.set(c.id, c)
     return m
   }, [snapshot.constituencies])
+
+  const features =
+    preparedGeometry?.version === geometryVersion ? preparedGeometry.features : []
+
+  useEffect(() => {
+    if (geometryRecords.length === 0) {
+      setPreparedGeometry(null)
+      setIsPreparingGeometry(false)
+      setGeometryPrepError(null)
+      return
+    }
+
+    const cached = getCachedHungaryGeometryFeatures(geometryVersion)
+    if (cached) {
+      setPreparedGeometry({ version: geometryVersion, features: cached })
+      setIsPreparingGeometry(false)
+      setGeometryPrepError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    setPreparedGeometry(null)
+    setIsPreparingGeometry(true)
+    setGeometryPrepError(null)
+
+    void prepareHungaryGeometryFeatures(geometryVersion, geometryRecords, {
+      signal: controller.signal,
+    })
+      .then((nextFeatures) => {
+        if (controller.signal.aborted) {
+          return
+        }
+
+        setPreparedGeometry({
+          version: geometryVersion,
+          features: nextFeatures,
+        })
+        setIsPreparingGeometry(false)
+      })
+      .catch((error) => {
+        if (
+          controller.signal.aborted
+          || (error instanceof DOMException && error.name === 'AbortError')
+        ) {
+          return
+        }
+
+        console.warn('Hungary map geometry preparation failed', error)
+        setGeometryPrepError('Harita geometrisi hazirlanirken sorun olustu.')
+        setIsPreparingGeometry(false)
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [geometryRecords, geometryVersion])
 
   /* ── build map once ── */
   useEffect(() => {
@@ -193,6 +256,12 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
     if (!src || !m) return
 
     src.clear(true)
+    featuresById.current = new Map()
+
+    if (features.length === 0) {
+      return
+    }
+
     const lookup = new Map<string, Feature<Polygon>>()
     for (const f of features) {
       lookup.set(String(f.get('constituencyId') ?? ''), f)
@@ -263,6 +332,21 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
 
       <div className="hungary-map-shell">
         <div className="hungary-map-canvas" ref={mapElRef} />
+        {isPreparingGeometry || geometryPrepError ? (
+          <div className="hungary-map-processing-overlay" aria-live="polite">
+            <span className={`hungary-badge ${geometryPrepError ? 'hungary-badge--warn' : 'hungary-badge--live'}`}>
+              {geometryPrepError ? 'Harita gecikiyor' : 'Cevre sinirlari isleniyor'}
+            </span>
+            <strong>
+              {geometryPrepError ? 'Harita sinirlari hazirlanamadi' : 'Harita tarayicida adim adim hazirlaniyor'}
+            </strong>
+            <span>
+              {geometryPrepError
+                ? 'Ozet veri akisi calismaya devam eder. Sayfayi yenileyip tekrar deneyebilirsiniz.'
+                : 'Buyuk poligonlar takilmamak icin parca parca isleniyor.'}
+            </span>
+          </div>
+        ) : null}
         <div className="hungary-map-overlay">
           <span>
             {mapMode === 'turnout'

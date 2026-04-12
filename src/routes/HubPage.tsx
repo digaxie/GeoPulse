@@ -5,6 +5,10 @@ import { ModeBadge } from '@/components/layout/ModeBadge'
 import { SiteCredit } from '@/components/layout/SiteCredit'
 import { beginDeckLogout } from '@/features/auth/deckLogout'
 import { useAuth } from '@/features/auth/useAuth'
+import {
+  readCachedHubModuleConfigs,
+  writeCachedHubModuleConfigs,
+} from '@/features/hub/configCache'
 import { useAppTheme } from '@/hooks/useAppTheme'
 import {
   createHubModules,
@@ -59,6 +63,15 @@ function buildDeckHandoffUrl(baseUrl: string, accessToken: string) {
   return target.toString()
 }
 
+function getInitialHubModuleConfigState() {
+  const cachedConfigs = readCachedHubModuleConfigs()
+
+  return {
+    items: cachedConfigs ?? [],
+    ready: cachedConfigs !== null,
+  }
+}
+
 export function HubPage() {
   const navigate = useNavigate()
   const { session, isLoading, logout } = useAuth()
@@ -66,7 +79,9 @@ export function HubPage() {
   const [loadingScenarios, setLoadingScenarios] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [launchError, setLaunchError] = useState<string | null>(null)
+  const [moduleError, setModuleError] = useState<string | null>(null)
   const [launchingModuleId, setLaunchingModuleId] = useState<string | null>(null)
+  const [moduleConfigState, setModuleConfigState] = useState(getInitialHubModuleConfigState)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const { uiTheme, setUiTheme, isDarkTheme } = useAppTheme()
 
@@ -75,8 +90,9 @@ export function HubPage() {
       createHubModules({
         enableLocalHub: appEnv.enableLocalHub,
         deckLocalUrl: appEnv.deckLocalUrl,
+        configs: moduleConfigState.items,
       }),
-    [appEnv.deckLocalUrl, appEnv.enableLocalHub],
+    [moduleConfigState.items],
   )
 
   useEffect(() => {
@@ -114,6 +130,42 @@ export function HubPage() {
     }
 
     void load()
+    return () => {
+      active = false
+    }
+  }, [session])
+
+  useEffect(() => {
+    if (!session) {
+      return
+    }
+
+    let active = true
+    setModuleError(null)
+
+    void backendClient
+      .listHubModuleConfigs()
+      .then((configs) => {
+        if (!active) {
+          return
+        }
+
+        writeCachedHubModuleConfigs(configs)
+        setModuleConfigState({
+          items: configs,
+          ready: true,
+        })
+      })
+      .catch((loadError) => {
+        if (!active) {
+          return
+        }
+
+        setModuleError(
+          loadError instanceof Error ? loadError.message : 'Kart ayarlari yuklenemedi.',
+        )
+      })
+
     return () => {
       active = false
     }
@@ -255,6 +307,7 @@ export function HubPage() {
 
       {error ? <p className="workspace-alert">{error}</p> : null}
       {launchError ? <p className="workspace-alert">{launchError}</p> : null}
+      {moduleError && !moduleConfigState.ready ? <p className="workspace-alert">{moduleError}</p> : null}
 
       <section className="modern-hub-grid">
         {modules.map((module) => {
@@ -274,7 +327,7 @@ export function HubPage() {
                 <div className="modern-hub-card-top">
                   <span className="modern-hub-card-badge">{module.badge}</span>
                   <span className={`modern-hub-card-status modern-hub-card-status--${module.status}`}>
-                    {module.status === 'active' ? 'Aktif' : 'Beklemede'}
+                    {module.statusLabel}
                   </span>
                 </div>
 
@@ -283,6 +336,9 @@ export function HubPage() {
                   <p>{module.description}</p>
                   {module.helperText ? (
                     <p className="modern-hub-card-helper">{module.helperText}</p>
+                  ) : null}
+                  {module.warningText ? (
+                    <p className="modern-hub-card-helper">{module.warningText}</p>
                   ) : null}
                 </div>
 
@@ -316,7 +372,7 @@ export function HubPage() {
                       onClick={() => void handleCreateScenario()}
                       type="button"
                     >
-                      + Yeni senaryo
+                      {module.secondaryCtaLabel || '+ Yeni senaryo'}
                     </button>
                   ) : null}
                 </div>

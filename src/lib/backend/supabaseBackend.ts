@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
 import { seedAssets } from '@/features/assets/seedAssets'
+import {
+  readCachedHubModuleConfigs,
+  writeCachedHubModuleConfigs,
+} from '@/features/hub/configCache'
 import { createDefaultScenarioDocument } from '@/features/scenario/defaults'
 import { migrateScenarioDocument } from '@/features/scenario/migrate'
 import { appEnv } from '@/lib/env'
@@ -14,12 +18,14 @@ import type {
   BackendClient,
   CreateUserInput,
   CreateUserResult,
+  HubModuleConfigRecord,
   CreateScenarioInput,
   ScenarioDetailRecord,
   ScenarioListItem,
   ScenarioLock,
   ScenarioSnapshotRecord,
   ScenarioSubscriptionHandlers,
+  UpdateHubModuleConfigInput,
   UploadAssetInput,
   UserRole,
 } from '@/lib/backend/types'
@@ -96,6 +102,20 @@ type AdminUserResponseRow = {
   username: string
   role: UserRole
   createdAt: string
+}
+
+type HubModuleConfigRow = {
+  id: string
+  control_state: 'enabled' | 'disabled' | 'hidden'
+  title: string
+  description: string
+  cta_label: string
+  secondary_cta_label: string
+  badge: string
+  helper_text: string
+  warning_text: string
+  status_label: string
+  updated_at: string
 }
 
 function getSupabase() {
@@ -187,6 +207,22 @@ function toAdminUserRecord(row: AdminUserResponseRow): AdminUserRecord {
     username: row.username,
     role: row.role,
     createdAt: row.createdAt,
+  }
+}
+
+function toHubModuleConfigRecord(row: HubModuleConfigRow): HubModuleConfigRecord {
+  return {
+    id: row.id,
+    controlState: row.control_state,
+    title: row.title,
+    description: row.description,
+    ctaLabel: row.cta_label,
+    secondaryCtaLabel: row.secondary_cta_label,
+    badge: row.badge,
+    helperText: row.helper_text,
+    warningText: row.warning_text,
+    statusLabel: row.status_label,
+    updatedAt: row.updated_at,
   }
 }
 
@@ -324,6 +360,44 @@ function toError(error: unknown, fallback: string) {
   }
 
   return new Error(fallback)
+}
+
+function isHubModuleConfigSchemaMissing(error: { code?: string; message?: string } | null) {
+  if (!error) {
+    return false
+  }
+
+  return (
+    error.code === '42P01'
+    || error.code === 'PGRST205'
+    || (typeof error.message === 'string' && error.message.includes('hub_module_configs'))
+  )
+}
+
+function normalizeHubModuleConfigInput(input: UpdateHubModuleConfigInput) {
+  const title = input.title.trim()
+  const ctaLabel = input.ctaLabel.trim()
+
+  if (!title) {
+    throw new Error('Kart basligi bos birakilamaz.')
+  }
+
+  if (!ctaLabel) {
+    throw new Error('Ana buton etiketi bos birakilamaz.')
+  }
+
+  return {
+    id: input.id.trim(),
+    control_state: input.controlState,
+    title,
+    description: input.description.trim(),
+    cta_label: ctaLabel,
+    secondary_cta_label: input.secondaryCtaLabel.trim(),
+    badge: input.badge.trim(),
+    helper_text: input.helperText.trim(),
+    warning_text: input.warningText.trim(),
+    status_label: input.statusLabel.trim(),
+  } satisfies Omit<HubModuleConfigRow, 'updated_at'>
 }
 
 function emitSubscriptionStatus(
@@ -769,6 +843,79 @@ export const supabaseBackend: BackendClient = {
     )
 
     return toAdminUserRecord(response.user)
+  },
+
+  async listHubModuleConfigs() {
+    const { data, error } = await getSupabase()
+      .from('hub_module_configs')
+      .select(
+        'id,control_state,title,description,cta_label,secondary_cta_label,badge,helper_text,warning_text,status_label,updated_at',
+      )
+      .order('id', { ascending: true })
+
+    if (error) {
+      if (isHubModuleConfigSchemaMissing(error)) {
+        return readCachedHubModuleConfigs() ?? []
+      }
+
+      throw error
+    }
+
+    const records = ((data ?? []) as HubModuleConfigRow[]).map(toHubModuleConfigRecord)
+    writeCachedHubModuleConfigs(records)
+    return records
+  },
+
+  async updateHubModuleConfig(input: UpdateHubModuleConfigInput) {
+    const session = await requireSession()
+    if (session.role !== 'admin') {
+      throw new Error('Bu islem yalnizca admin kullanicilar icindir.')
+    }
+
+    const payload = {
+      ...normalizeHubModuleConfigInput(input),
+      updated_by: session.id,
+    }
+
+    const { data, error } = await getSupabase()
+      .from('hub_module_configs')
+      .upsert(payload, { onConflict: 'id' })
+      .select(
+        'id,control_state,title,description,cta_label,secondary_cta_label,badge,helper_text,warning_text,status_label,updated_at',
+      )
+      .single()
+
+    if (error) {
+      if (isHubModuleConfigSchemaMissing(error)) {
+        const fallbackRecord: HubModuleConfigRecord = {
+          ...input,
+          id: input.id.trim(),
+          title: input.title.trim(),
+          description: input.description.trim(),
+          ctaLabel: input.ctaLabel.trim(),
+          secondaryCtaLabel: input.secondaryCtaLabel.trim(),
+          badge: input.badge.trim(),
+          helperText: input.helperText.trim(),
+          warningText: input.warningText.trim(),
+          statusLabel: input.statusLabel.trim(),
+          updatedAt: new Date().toISOString(),
+        }
+        const current = readCachedHubModuleConfigs() ?? []
+        const next = current.filter((record) => record.id !== fallbackRecord.id)
+        next.push(fallbackRecord)
+        writeCachedHubModuleConfigs(next)
+        return fallbackRecord
+      }
+
+      throw error
+    }
+
+    const record = toHubModuleConfigRecord(data as HubModuleConfigRow)
+    const current = readCachedHubModuleConfigs() ?? []
+    const next = current.filter((item) => item.id !== record.id)
+    next.push(record)
+    writeCachedHubModuleConfigs(next)
+    return record
   },
 
   async listSnapshots(scenarioId: string) {

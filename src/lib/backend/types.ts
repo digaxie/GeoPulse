@@ -95,6 +95,24 @@ export type CreateUserResult = {
   password: string
 }
 
+export type HubModuleControlState = 'enabled' | 'disabled' | 'hidden'
+
+export type HubModuleConfigRecord = {
+  id: string
+  controlState: HubModuleControlState
+  title: string
+  description: string
+  ctaLabel: string
+  secondaryCtaLabel: string
+  badge: string
+  helperText: string
+  warningText: string
+  statusLabel: string
+  updatedAt: string
+}
+
+export type UpdateHubModuleConfigInput = Omit<HubModuleConfigRecord, 'updatedAt'>
+
 export type ScenarioSnapshotRecord = {
   id: string
   scenarioId: string
@@ -142,6 +160,8 @@ export interface BackendClient {
   createUser(input: CreateUserInput): Promise<CreateUserResult>
   rotateUserPassword(userId: string): Promise<{ password: string }>
   updateUserRole(userId: string, role: UserRole): Promise<AdminUserRecord>
+  listHubModuleConfigs(): Promise<HubModuleConfigRecord[]>
+  updateHubModuleConfig(input: UpdateHubModuleConfigInput): Promise<HubModuleConfigRecord>
   listSnapshots(scenarioId: string): Promise<ScenarioSnapshotRecord[]>
   createSnapshot(scenarioId: string): Promise<ScenarioSnapshotRecord>
   restoreSnapshot(snapshotId: string): Promise<ScenarioDetailRecord>

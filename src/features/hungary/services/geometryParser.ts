@@ -12,6 +12,8 @@ type HungaryGeometrySeed = {
 
 const seedCache = new Map<string, HungaryGeometrySeed[]>()
 const featureCache = new Map<string, Feature<Polygon>[]>()
+const MAX_RING_POINTS = 1200
+const RECORDS_PER_SLICE = 4
 
 function parseLatLonPair(value: string) {
   const parts = value.trim().split(/\s+/u)
@@ -43,6 +45,22 @@ function closeRingIfNeeded(ring: [number, number][]) {
   }
 
   return [...ring, first]
+}
+
+function downsampleRing(ring: [number, number][], maxPoints: number) {
+  if (ring.length <= maxPoints) {
+    return ring
+  }
+
+  const step = Math.max(1, Math.ceil((ring.length - 1) / (maxPoints - 1)))
+  const sampled: [number, number][] = [ring[0]]
+
+  for (let index = step; index < ring.length - 1; index += step) {
+    sampled.push(ring[index])
+  }
+
+  sampled.push(ring[ring.length - 1])
+  return sampled
 }
 
 /**
@@ -93,7 +111,8 @@ function parsePolygonString(value: string) {
     .filter((coordinate): coordinate is [number, number] => coordinate !== null)
 
   const closed = closeRingIfNeeded(raw)
-  return simplifyRing(closed, SIMPLIFY_TOLERANCE)
+  const sampled = downsampleRing(closed, MAX_RING_POINTS)
+  return simplifyRing(sampled, SIMPLIFY_TOLERANCE)
 }
 
 function buildGeometrySeeds(version: string, records: HungaryGeometryRecord[]) {
@@ -115,28 +134,79 @@ function buildGeometrySeeds(version: string, records: HungaryGeometryRecord[]) {
   return seeds
 }
 
-export function buildHungaryGeometryFeatures(
+function createFeatureFromSeed(seed: HungaryGeometrySeed) {
+  return new Feature({
+    geometry: new Polygon([
+      seed.ring.map((coordinate) => fromLonLat(coordinate)),
+    ]),
+    constituencyId: seed.id,
+    centerLonLat: seed.center,
+  })
+}
+
+function yieldToMainThread() {
+  return new Promise<void>((resolve) => {
+    globalThis.setTimeout(resolve, 0)
+  })
+}
+
+export function getCachedHungaryGeometryFeatures(version: string) {
+  return featureCache.get(version) ?? null
+}
+
+export async function prepareHungaryGeometryFeatures(
   version: string,
   records: HungaryGeometryRecord[],
-): Feature<Polygon>[] {
+  options: { signal?: AbortSignal } = {},
+): Promise<Feature<Polygon>[]> {
   const cachedFeatures = featureCache.get(version)
 
   if (cachedFeatures) {
     return cachedFeatures
   }
 
-  const seeds = buildGeometrySeeds(version, records)
-  const features = seeds.map((seed) => {
-    const feature = new Feature({
-      geometry: new Polygon([
-        seed.ring.map((coordinate) => fromLonLat(coordinate)),
-      ]),
-      constituencyId: seed.id,
-      centerLonLat: seed.center,
-    })
+  let seeds = seedCache.get(version) ?? null
 
-    return feature
-  })
+  if (!seeds) {
+    const nextSeeds: HungaryGeometrySeed[] = []
+
+    for (let index = 0; index < records.length; index += 1) {
+      if (options.signal?.aborted) {
+        throw new DOMException('Geometry preparation aborted', 'AbortError')
+      }
+
+      const record = records[index]
+      const ring = parsePolygonString(record.polygon)
+      if (ring.length >= 4) {
+        nextSeeds.push({
+          id: record.id,
+          center: record.center,
+          ring,
+        })
+      }
+
+      if ((index + 1) % RECORDS_PER_SLICE === 0) {
+        await yieldToMainThread()
+      }
+    }
+
+    seeds = nextSeeds
+    seedCache.set(version, seeds)
+  }
+
+  const features: Feature<Polygon>[] = []
+
+  for (let index = 0; index < seeds.length; index += 1) {
+    if (options.signal?.aborted) {
+      throw new DOMException('Geometry preparation aborted', 'AbortError')
+    }
+
+    features.push(createFeatureFromSeed(seeds[index]))
+
+    if ((index + 1) % RECORDS_PER_SLICE === 0) {
+      await yieldToMainThread()
+    }
+  }
 
   featureCache.set(version, features)
   return features

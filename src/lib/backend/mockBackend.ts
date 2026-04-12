@@ -11,18 +11,20 @@ import { createViewerSlug, readFileImageDimensions, safeJsonParse } from '@/lib/
 import type {
   AdminUserListResponse,
   AdminUserRecord,
+  AssetDefinition,
   AuthSession,
   BackendClient,
   CreateScenarioInput,
   CreateUserInput,
   CreateUserResult,
+  HubModuleConfigRecord,
   ScenarioDetailRecord,
   ScenarioLock,
   ScenarioListItem,
   ScenarioSnapshotRecord,
   ScenarioSubscriptionTarget,
+  UpdateHubModuleConfigInput,
   UserRole,
-  AssetDefinition,
 } from '@/lib/backend/types'
 
 const STORAGE_PREFIX = 'interaktifmap:mock'
@@ -31,6 +33,7 @@ const ASSETS_KEY = `${STORAGE_PREFIX}:assets`
 const SESSION_KEY = `${STORAGE_PREFIX}:session`
 const USERS_KEY = `${STORAGE_PREFIX}:users`
 const SNAPSHOTS_KEY = `${STORAGE_PREFIX}:snapshots`
+const HUB_MODULE_CONFIGS_KEY = `${STORAGE_PREFIX}:hub-module-configs`
 const INTERNAL_EVENT = 'interaktifmap:mock:update'
 const LOCK_TTL_MS = 60_000
 
@@ -78,7 +81,12 @@ function getWindowStorage() {
   return window.localStorage
 }
 
-function emitUpdate(detail: { type: 'session' | 'scenarios' | 'assets' | 'users' | 'snapshots'; id?: string }) {
+function emitUpdate(
+  detail: {
+    type: 'session' | 'scenarios' | 'assets' | 'users' | 'snapshots' | 'hub-module-configs'
+    id?: string
+  },
+) {
   if (typeof window === 'undefined') {
     return
   }
@@ -241,6 +249,25 @@ function writeSnapshots(snapshots: MockSnapshotRecord[]) {
   emitUpdate({ type: 'snapshots' })
 }
 
+function readHubModuleConfigs(): HubModuleConfigRecord[] {
+  const storage = getWindowStorage()
+  if (!storage) {
+    return []
+  }
+
+  return safeJsonParse<HubModuleConfigRecord[]>(storage.getItem(HUB_MODULE_CONFIGS_KEY), [])
+}
+
+function writeHubModuleConfigs(configs: HubModuleConfigRecord[]) {
+  const storage = getWindowStorage()
+  if (!storage) {
+    return
+  }
+
+  storage.setItem(HUB_MODULE_CONFIGS_KEY, JSON.stringify(configs))
+  emitUpdate({ type: 'hub-module-configs' })
+}
+
 function readSession(): AuthSession | null {
   const storage = getWindowStorage()
   if (!storage) {
@@ -281,6 +308,33 @@ function requireAdminSession() {
   }
 
   return session
+}
+
+function normalizeHubModuleConfigInput(input: UpdateHubModuleConfigInput): HubModuleConfigRecord {
+  const title = input.title.trim()
+  const ctaLabel = input.ctaLabel.trim()
+
+  if (!title) {
+    throw new Error('Kart basligi bos birakilamaz.')
+  }
+
+  if (!ctaLabel) {
+    throw new Error('Ana buton etiketi bos birakilamaz.')
+  }
+
+  return {
+    id: input.id.trim(),
+    controlState: input.controlState,
+    title,
+    description: input.description.trim(),
+    ctaLabel,
+    secondaryCtaLabel: input.secondaryCtaLabel.trim(),
+    badge: input.badge.trim(),
+    helperText: input.helperText.trim(),
+    warningText: input.warningText.trim(),
+    statusLabel: input.statusLabel.trim(),
+    updatedAt: nowIso(),
+  }
 }
 
 function findScenario(target: ScenarioSubscriptionTarget) {
@@ -703,11 +757,32 @@ export const mockBackend: BackendClient = {
       })
     }
 
-    return user
-  },
+      return user
+    },
 
-  async listSnapshots(scenarioId: string) {
-    requireSession()
+    async listHubModuleConfigs() {
+      requireSession()
+      return readHubModuleConfigs().sort((left, right) => left.id.localeCompare(right.id))
+    },
+
+    async updateHubModuleConfig(input: UpdateHubModuleConfigInput) {
+      requireAdminSession()
+      const normalized = normalizeHubModuleConfigInput(input)
+      const configs = readHubModuleConfigs()
+      const index = configs.findIndex((config) => config.id === normalized.id)
+
+      if (index === -1) {
+        configs.push(normalized)
+      } else {
+        configs[index] = normalized
+      }
+
+      writeHubModuleConfigs(configs)
+      return normalized
+    },
+
+    async listSnapshots(scenarioId: string) {
+      requireSession()
     return readSnapshots()
       .filter((snapshot) => snapshot.scenarioId === scenarioId)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
