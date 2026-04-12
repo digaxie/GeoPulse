@@ -373,29 +373,11 @@ async function fetchHungaryJson<TPayload>(
   }
 }
 
-async function resolveSourceMode(signal?: AbortSignal): Promise<HungarySourceMode> {
+async function resolveSourceMode(_signal?: AbortSignal): Promise<HungarySourceMode> {
   if (!sourceModePromise) {
-    sourceModePromise = (async () => {
-      try {
-        await fetchWithTimeout(buildOfficialUrl('config.json'), {
-          signal,
-          cache: 'no-store',
-          mode: 'cors',
-          headers: {
-            Accept: 'application/json',
-          },
-        })
-
-        return 'direct'
-      } catch (error) {
-        log.warn('Hungary data access fell back to proxy mode', {
-          action: 'resolveSourceMode',
-          report: false,
-          error,
-        })
-        return 'proxy'
-      }
-    })()
+    // NVI's live endpoints do not consistently expose browser-safe CORS headers.
+    // Using the same-origin proxy by default avoids a multi-second failed probe on page load.
+    sourceModePromise = Promise.resolve('proxy')
   }
 
   return sourceModePromise

@@ -88,6 +88,8 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
   const baseSourceRef = useRef<VectorSource | null>(null)
   const hlSourceRef = useRef<VectorSource | null>(null)
   const featuresById = useRef<Map<string, Feature<Polygon>>>(new Map())
+  const pointerMoveFrameRef = useRef<number | null>(null)
+  const pendingHoverPixelRef = useRef<number[] | null>(null)
 
   const mapMode = useHungaryStore((s) => s.mapMode)
   const hoveredId = useHungaryStore((s) => s.hoveredConstituencyId)
@@ -181,8 +183,6 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
 
     const hlLayer = new VectorLayer({
       source: hlSource,
-      updateWhileAnimating: true,
-      updateWhileInteracting: true,
     })
 
     const map = new OLMap({
@@ -199,10 +199,16 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
 
     let lastHit: string | null = null
 
-    map.on('pointermove', (e) => {
-      if (e.dragging) return
+    const flushPointerMove = () => {
+      pointerMoveFrameRef.current = null
+
+      const pixel = pendingHoverPixelRef.current
+      if (!pixel) {
+        return
+      }
+
       let hit: string | null = null
-      map.forEachFeatureAtPixel(e.pixel, (f, l) => {
+      map.forEachFeatureAtPixel(pixel, (f, l) => {
         if (l === baseLayer || l === hlLayer) {
           hit = String(f.get('constituencyId') ?? '')
           return f
@@ -214,6 +220,20 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
         hoverConstituency(hit)
         map.getViewport().style.cursor = hit ? 'pointer' : ''
       }
+    }
+
+    map.on('pointermove', (e) => {
+      if (e.dragging) {
+        return
+      }
+
+      pendingHoverPixelRef.current = e.pixel
+
+      if (pointerMoveFrameRef.current !== null) {
+        return
+      }
+
+      pointerMoveFrameRef.current = window.requestAnimationFrame(flushPointerMove)
     })
 
     map.on('click', (e) => {
@@ -228,7 +248,17 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
       selectConstituency(hit)
     })
 
-    const onLeave = () => { lastHit = null; hoverConstituency(null); map.getViewport().style.cursor = '' }
+    const onLeave = () => {
+      if (pointerMoveFrameRef.current !== null) {
+        window.cancelAnimationFrame(pointerMoveFrameRef.current)
+        pointerMoveFrameRef.current = null
+      }
+
+      pendingHoverPixelRef.current = null
+      lastHit = null
+      hoverConstituency(null)
+      map.getViewport().style.cursor = ''
+    }
     const onResize = () => map.updateSize()
     map.getViewport().addEventListener('mouseleave', onLeave)
     window.addEventListener('resize', onResize)
@@ -239,6 +269,10 @@ function HungaryMapInner({ snapshot, geometryVersion, geometryRecords }: Hungary
     mapRef.current = map
 
     return () => {
+      if (pointerMoveFrameRef.current !== null) {
+        window.cancelAnimationFrame(pointerMoveFrameRef.current)
+        pointerMoveFrameRef.current = null
+      }
       map.getViewport().removeEventListener('mouseleave', onLeave)
       window.removeEventListener('resize', onResize)
       map.setTarget(undefined)

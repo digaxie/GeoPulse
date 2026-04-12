@@ -12,8 +12,8 @@ type HungaryGeometrySeed = {
 
 const seedCache = new Map<string, HungaryGeometrySeed[]>()
 const featureCache = new Map<string, Feature<Polygon>[]>()
-const MAX_RING_POINTS = 1200
-const RECORDS_PER_SLICE = 4
+const MAX_RING_POINTS = 360
+const RECORDS_PER_SLICE = 2
 
 function parseLatLonPair(value: string) {
   const parts = value.trim().split(/\s+/u)
@@ -102,7 +102,7 @@ function simplifyRing(ring: [number, number][], tolerance: number): [number, num
   return [ring[0], ring[ring.length - 1]]
 }
 
-const SIMPLIFY_TOLERANCE = 0.0012
+const SIMPLIFY_TOLERANCE = 0.0028
 
 function parsePolygonString(value: string) {
   const raw = value

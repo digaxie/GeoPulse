@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent } from 'react'
+import { startTransition, useEffect, useEffectEvent, useRef } from 'react'
 
 import { HUNGARY_CONFIG_POLL_MS, formatHungaryInteger } from '@/features/hungary/constants'
 import { CheckpointTimeline } from '@/features/hungary/components/CheckpointTimeline'
@@ -27,6 +27,9 @@ function getFetchErrorMessage(error: unknown) {
 export function HungaryPage() {
   const { uiTheme } = useAppTheme()
   const snapshot = useHungaryStore((state) => state.snapshot)
+  const snapshotConfigVersion = snapshot?.configVersion ?? null
+  const snapshotRefreshKey = snapshot?.generatedAt ?? null
+  const geometryRequestVersionRef = useRef<string | null>(null)
   const geometryVersion = useHungaryStore((state) => state.geometryVersion)
   const geometryRecords = useHungaryStore((state) => state.geometryRecords)
   const isGeometryLoading = useHungaryStore((state) => state.isGeometryLoading)
@@ -131,25 +134,43 @@ export function HungaryPage() {
   }, [runRefresh])
 
   useEffect(() => {
-    if (!snapshot) {
+    if (!snapshotConfigVersion) {
       return
     }
 
-    if (isGeometryLoading) {
+    if (geometryRequestVersionRef.current === snapshotConfigVersion) {
       return
     }
 
-    if (geometryVersion === snapshot.configVersion && geometryRecords.length > 0) {
+    if (geometryVersion === snapshotConfigVersion && geometryRecords.length > 0) {
+      geometryRequestVersionRef.current = null
       return
     }
 
     const controller = new AbortController()
-    void runGeometryRefresh(snapshot.configVersion, controller.signal)
+    geometryRequestVersionRef.current = snapshotConfigVersion
+
+    const timeoutId = window.setTimeout(() => {
+      void runGeometryRefresh(snapshotConfigVersion, controller.signal).finally(() => {
+        if (controller.signal.aborted) {
+          return
+        }
+
+        if (geometryRequestVersionRef.current === snapshotConfigVersion) {
+          geometryRequestVersionRef.current = null
+        }
+      })
+    }, 0)
 
     return () => {
+      window.clearTimeout(timeoutId)
       controller.abort()
+
+      if (geometryRequestVersionRef.current === snapshotConfigVersion) {
+        geometryRequestVersionRef.current = null
+      }
     }
-  }, [geometryRecords.length, geometryVersion, isGeometryLoading, runGeometryRefresh, snapshot])
+  }, [geometryRecords.length, geometryVersion, runGeometryRefresh, snapshotConfigVersion, snapshotRefreshKey])
 
   return (
     <HungaryErrorBoundary>
