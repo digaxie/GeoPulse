@@ -114,17 +114,17 @@ export function AdminPage() {
     const deckUrl = appEnv.deckLocalUrl.replace(/\/+$/u, '')
 
     void getSupabaseAccessToken()
-      .then((token) =>
+      .then((token: string) =>
         fetch(`${deckUrl}/api/admin/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       )
-      .then(async (r) => {
+      .then(async (r: Response) => {
         if (!r.ok) throw new Error(`Deck API: ${r.status}`)
         return r.json() as Promise<NonNullable<DeckStats>>
       })
-      .then((data) => { if (active) setDeckStats(data) })
-      .catch((e) => { if (active) setDeckError(e instanceof Error ? e.message : 'Deck bilgileri alinamadi') })
+      .then((data: NonNullable<DeckStats>) => { if (active) setDeckStats(data) })
+      .catch((e: unknown) => { if (active) setDeckError(e instanceof Error ? e.message : 'Deck bilgileri alinamadi') })
       .finally(() => { if (active) setDeckLoading(false) })
 
     return () => { active = false }

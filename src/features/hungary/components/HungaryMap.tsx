@@ -216,6 +216,10 @@ export function HungaryMap({ snapshot, geometryVersion, geometryRecords }: Hunga
     sourceRef.current.addFeatures(features)
 
     const extent = sourceRef.current.getExtent()
+    if (!extent) {
+      return
+    }
+
     if (extent.some((value) => !Number.isFinite(value))) {
       return
     }

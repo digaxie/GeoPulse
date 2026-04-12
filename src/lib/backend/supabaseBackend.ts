@@ -274,6 +274,10 @@ async function requireAccessToken() {
   return data.session.access_token
 }
 
+export async function getSupabaseAccessToken() {
+  return requireAccessToken()
+}
+
 async function callEdgeFunction<TResponse>(
   functionName: string,
   body?: Record<string, unknown>,
