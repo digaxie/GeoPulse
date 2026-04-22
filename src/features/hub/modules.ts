@@ -146,36 +146,6 @@ function createBaseHubModules({
       helperText: 'M3U/IPTV kanallarini grid gorunumunde izleyin.',
       warningText: 'Test asamasindadir',
     },
-    {
-      id: 'hungary',
-      title: 'GeoPulse - Hungary',
-      description:
-        '12 Nisan 2026 Macaristan secimi icin resmi NVI veri akisi, 106 cevre haritasi ve canli oy takibi.',
-      status: 'active',
-      href: '/app/hungary',
-      ctaLabel: 'Secim Gecesini Ac',
-      visibleIn: 'always',
-      entryKind: 'internal',
-      accent: 'gold',
-      badge: 'HU',
-      helperText: 'Katilim ve sonuc modu config.json ile otomatik degisir.',
-      warningText: 'Resmi NVI/VTR verisi',
-    },
-    {
-      id: 'notes',
-      title: 'Intel Notes',
-      description:
-        'Gelecekte kisa briefing notlari ve editor disi hizli bilgi bloklari icin.',
-      status: 'coming-soon',
-      href: null,
-      ctaLabel: 'Yakinda',
-      visibleIn: 'always',
-      entryKind: 'disabled',
-      accent: 'gold',
-      badge: 'Soon',
-      helperText: 'Bu kart sistemin moduler buyume yonunu gostermek icin yer tutar.',
-      defaultControlState: 'disabled',
-    },
   ]
 
   return modules.filter((module) => {

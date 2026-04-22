@@ -45,11 +45,6 @@ const TvPage = lazy(async () => {
   return { default: module.TvPage }
 })
 
-const HungaryPage = lazy(async () => {
-  const module = await import('@/routes/HungaryPage')
-  return { default: module.HungaryPage }
-})
-
 const NotFoundPage = lazy(async () => {
   const module = await import('@/routes/NotFoundPage')
   return { default: module.NotFoundPage }
@@ -117,14 +112,6 @@ export function AppRouter() {
             element={
               <ProtectedRoute>
                 <TvPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/app/hungary"
-            element={
-              <ProtectedRoute>
-                <HungaryPage />
               </ProtectedRoute>
             }
           />

@@ -13,8 +13,6 @@ describe('createHubModules', () => {
       'scenarios',
       'deck',
       'tv',
-      'hungary',
-      'notes',
     ])
     expect(modules.find((module) => module.id === 'deck')?.healthCheckUrl).toBeUndefined()
   })
@@ -29,8 +27,6 @@ describe('createHubModules', () => {
       'scenarios',
       'deck',
       'tv',
-      'hungary',
-      'notes',
     ])
     expect(modules.find((module) => module.id === 'deck')?.healthCheckUrl).toBe(
       'http://127.0.0.1:3211/api/health',
